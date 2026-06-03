@@ -6,7 +6,8 @@ import { Modal } from "../../components/ui/Modal";
 import { AmountInput } from "../../components/ui/AmountInput";
 import { Badge } from "../../components/ui/Badge";
 import { formatCNY, formatDate } from "../../lib/formatters";
-import { Plus, Briefcase, Download, Upload, FileSpreadsheet } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Briefcase, Download, Upload, FileSpreadsheet, Eye } from "lucide-react";
 import { exportToExcel, importFromExcel, downloadTemplate } from "../../lib/excel";
 
 const EXPORT_HEADERS_MAP = {
@@ -15,6 +16,8 @@ const EXPORT_HEADERS_MAP = {
   pool_name: "出资来源池名称",
   committed_amount: "计划出资规模",
   status: "立项阶段",
+  start_date: "起始日期",
+  expected_end_date: "预计结束日期",
   tags: "标签",
   description: "项目详情描述"
 };
@@ -25,11 +28,14 @@ const IMPORT_HEADERS_MAP = {
   "出资来源池名称": "pool_name",
   "计划出资规模": "committed_amount",
   "立项阶段": "status",
+  "起始日期": "start_date",
+  "预计结束日期": "expected_end_date",
   "标签": "tags",
   "项目详情描述": "description"
 };
 
 export function Projects() {
+  const navigate = useNavigate();
   const { pools } = usePools();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +49,8 @@ export function Projects() {
   const [committedAmount, setCommittedAmount] = useState("");
   const [description, setDescription] = useState("");
   const [tagsInput, setTagsInput] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -67,13 +75,22 @@ export function Projects() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!poolId || !name || !code || !committedAmount) return;
+    if (!poolId || !name || !code || !committedAmount || !startDate || !endDate) {
+      alert("请填写全部必填项");
+      return;
+    }
+
+    if (new Date(endDate) < new Date(startDate)) {
+      alert("结束日期不能早于起始日期！");
+      return;
+    }
+
     try {
       const projId = `proj-${Date.now()}`;
       const sql = `
         INSERT INTO projects (
-          id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags
-        ) VALUES (?, ?, ?, ?, ?, ?, 0.00, 0.00, ?, ?)
+          id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags, start_date, expected_end_date
+        ) VALUES (?, ?, ?, ?, ?, ?, 0.00, 0.00, ?, ?, ?, ?)
       `;
       
       const tags = tagsInput ? JSON.stringify(tagsInput.split(",").map(t => t.trim())) : JSON.stringify([]);
@@ -86,7 +103,9 @@ export function Projects() {
         status,
         Number(committedAmount),
         description,
-        tags
+        tags,
+        startDate,
+        endDate
       ]);
 
       setPoolId("");
@@ -96,6 +115,8 @@ export function Projects() {
       setCommittedAmount("");
       setDescription("");
       setTagsInput("");
+      setStartDate("");
+      setEndDate("");
       setIsModalOpen(false);
       await fetchProjects();
       alert("新投资组合项目立项登记成功！");
@@ -121,6 +142,8 @@ export function Projects() {
       return {
         ...p,
         status: statusLabels[p.status] || p.status,
+        start_date: p.start_date ? formatDate(p.start_date) : "",
+        expected_end_date: p.expected_end_date ? formatDate(p.expected_end_date) : "",
         tags: tagsStr
       };
     });
@@ -156,6 +179,18 @@ export function Projects() {
         const rTags = (row.tags || "").toString().trim();
         const rDesc = (row.description || "").toString().trim();
 
+        // 校验日期
+        let formattedStartDate = "";
+        let formattedEndDate = "";
+        if (row.start_date) {
+          const d = new Date(row.start_date);
+          if (!isNaN(d.getTime())) formattedStartDate = d.toISOString().slice(0, 10);
+        }
+        if (row.expected_end_date) {
+          const d = new Date(row.expected_end_date);
+          if (!isNaN(d.getTime())) formattedEndDate = d.toISOString().slice(0, 10);
+        }
+
         if (!rName) {
           errors.push(`第 ${rowNum} 行: 项目名称必填`);
           return;
@@ -170,6 +205,18 @@ export function Projects() {
         }
         if (isNaN(rCommitted) || rCommitted <= 0) {
           errors.push(`第 ${rowNum} 行: 计划出资规模必须是大于 0 的数值`);
+          return;
+        }
+        if (!formattedStartDate) {
+          errors.push(`第 ${rowNum} 行: 起始日期必填且必须为有效日期`);
+          return;
+        }
+        if (!formattedEndDate) {
+          errors.push(`第 ${rowNum} 行: 预计结束日期必填且必须为有效日期`);
+          return;
+        }
+        if (new Date(formattedEndDate) < new Date(formattedStartDate)) {
+          errors.push(`第 ${rowNum} 行: 预计结束日期不能早于起始日期`);
           return;
         }
 
@@ -203,7 +250,9 @@ export function Projects() {
           committedAmount: rCommitted,
           status: rStatus,
           tags: JSON.stringify(tagsArray),
-          description: rDesc
+          description: rDesc,
+          startDate: formattedStartDate,
+          expectedEndDate: formattedEndDate
         });
       });
 
@@ -228,8 +277,8 @@ export function Projects() {
 
         const sql = `
           INSERT INTO projects (
-            id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags
-          ) VALUES (?, ?, ?, ?, ?, ?, 0.00, 0.00, ?, ?)
+            id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags, start_date, expected_end_date
+          ) VALUES (?, ?, ?, ?, ?, ?, 0.00, 0.00, ?, ?, ?, ?)
         `;
 
         await querySQL(sql, [
@@ -240,7 +289,9 @@ export function Projects() {
           record.status,
           record.committedAmount,
           record.description,
-          record.tags
+          record.tags,
+          record.startDate,
+          record.expectedEndDate
         ]);
 
         successCount++;
@@ -257,7 +308,7 @@ export function Projects() {
   };
 
   const headers = [
-    { key: "name", label: "项目名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { key: "name", label: "项目名称", render: (v, row) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { key: "code", label: "项目编号", render: (v) => <span className="mono badge badge-active">{v}</span> },
     { key: "pool_name", label: "出资来源池子" },
     { key: "status", label: "立项状态", render: (v) => {
@@ -268,7 +319,39 @@ export function Projects() {
     { key: "committed_amount", label: "计划投放额", render: (v) => formatCNY(v, false) },
     { key: "invested_amount", label: "已打款金额", render: (v) => formatCNY(v, false) },
     { key: "returned_amount", label: "已回款金额", render: (v) => formatCNY(v, false) },
-    { key: "created_at", label: "登记日期", render: (v) => formatDate(v) }
+    { key: "start_date", label: "起始日期", render: (v) => formatDate(v) },
+    { 
+      key: "expected_end_date", 
+      label: "预计结束日期", 
+      render: (v) => {
+        if (!v) return "-";
+        const isExpired = new Date(v) < new Date();
+        return (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span className="mono" style={{ color: isExpired ? "var(--accent-red)" : "inherit" }}>{formatDate(v)}</span>
+            {isExpired && <span className="badge badge-danger" style={{ padding: "2px 6px", fontSize: "0.7rem", textTransform: "none" }}>已到期</span>}
+          </span>
+        );
+      }
+    },
+    { 
+      key: "id", 
+      label: "操作", 
+      align: "right",
+      render: (v) => (
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/admin/projects/${v}`);
+          }}
+          className="btn-secondary"
+          style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
+        >
+          <Eye size={14} />
+          <span>详情明细</span>
+        </button>
+      )
+    }
   ];
 
   return (
@@ -312,6 +395,7 @@ export function Projects() {
           headers={headers} 
           data={projects} 
           emptyMessage={loading ? "加载中..." : "暂无已录入的投资项目"}
+          onRowClick={(row) => navigate(`/admin/projects/${row.id}`)}
         />
       </div>
 
@@ -351,9 +435,32 @@ export function Projects() {
             >
               <option value="">-- 请选择出资来源池子 --</option>
               {pools.map(p => (
-                <option key={p.id} value={p.id}>{p.name} (余额: {formatCNY(p.available_balance, false)})</option>
+                <option key={p.id} value={p.id}>{p.name} (可用: {formatCNY(p.available_balance, false)})</option>
               ))}
             </select>
+          </div>
+
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">运行起始日期 *</label>
+              <input 
+                type="date" 
+                required
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="form-input mono"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">预计结束日期 *</label>
+              <input 
+                type="date" 
+                required
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="form-input mono"
+              />
+            </div>
           </div>
 
           <div className="form-group">

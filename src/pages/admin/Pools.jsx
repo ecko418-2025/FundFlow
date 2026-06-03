@@ -3,7 +3,7 @@ import { usePools } from "../../hooks/usePools";
 import { DataTable } from "../../components/ui/DataTable";
 import { Modal } from "../../components/ui/Modal";
 import { AmountInput } from "../../components/ui/AmountInput";
-import { formatCNY, formatPercent } from "../../lib/formatters";
+import { formatCNY, formatPercent, formatDate } from "../../lib/formatters";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "../../components/ui/Badge";
 import { Plus, Link2, Eye } from "lucide-react";
@@ -20,6 +20,9 @@ export function Pools() {
   const [poolName, setPoolName] = useState("");
   const [poolDesc, setPoolDesc] = useState("");
   const [totalCommitted, setTotalCommitted] = useState("");
+  const [poolType, setPoolType] = useState("capital");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   // 新建池间投资表单状态
   const [parentPoolId, setParentPoolId] = useState("");
@@ -31,17 +34,29 @@ export function Pools() {
   const handleCreatePool = async (e) => {
     e.preventDefault();
     if (!poolName || !totalCommitted) return;
+    
+    if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+      alert("结束日期不能早于起始日期！");
+      return;
+    }
+
     try {
       await createPool({
         name: poolName,
         description: poolDesc,
         totalCommitted: Number(totalCommitted),
+        type: poolType,
+        startDate: startDate || null,
+        endDate: endDate || null,
         createdBy: "admin"
       });
       // 重置表单并关闭
       setPoolName("");
       setPoolDesc("");
       setTotalCommitted("");
+      setPoolType("capital");
+      setStartDate("");
+      setEndDate("");
       setIsPoolModalOpen(false);
     } catch (err) {
       alert("创建资金池失败：" + err.message);
@@ -79,12 +94,37 @@ export function Pools() {
     }
   };
 
+  const poolTypesLabel = {
+    capital: "公司股本金",
+    temporary_quarterly: "季度临时资金",
+    temporary_annually: "年度临时资金"
+  };
+
   const headers = [
     { key: "name", label: "资金池名称", render: (v, row) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { 
+      key: "type", 
+      label: "类型", 
+      render: (v) => <Badge text={poolTypesLabel[v] || "未知"} status={v === 'capital' ? 'active' : 'warning'} /> 
+    },
     { key: "total_committed", label: "认缴规模", render: (v) => formatCNY(v, false) },
     { key: "available_balance", label: "现金可用余额", render: (v) => formatCNY(v, false) },
     { key: "status", label: "状态", render: (v) => <Badge text={v === 'active' ? '运营中' : '已关闭'} status={v} /> },
-    { key: "description", label: "备注摘要" },
+    { key: "start_date", label: "起始日期", render: (v) => formatDate(v) },
+    { 
+      key: "end_date", 
+      label: "结束日期", 
+      render: (v) => {
+        if (!v) return "-";
+        const isExpired = new Date(v) < new Date();
+        return (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span className="mono" style={{ color: isExpired ? "var(--accent-red)" : "inherit" }}>{formatDate(v)}</span>
+            {isExpired && <span className="badge badge-danger" style={{ padding: "2px 6px", fontSize: "0.7rem", textTransform: "none" }}>已到期</span>}
+          </span>
+        );
+      }
+    },
     { 
       key: "id", 
       label: "操作", 
@@ -151,6 +191,41 @@ export function Pools() {
           </div>
 
           <div className="form-group">
+            <label className="form-label">资金池类型 *</label>
+            <select 
+              value={poolType} 
+              onChange={(e) => setPoolType(e.target.value)}
+              className="form-input"
+              required
+            >
+              <option value="capital">公司股本金 (Share Capital)</option>
+              <option value="temporary_quarterly">季度临时资金 (Quarterly Temporary Fund)</option>
+              <option value="temporary_annually">年度临时资金 (Annual Temporary Fund)</option>
+            </select>
+          </div>
+
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">运行起始日期</label>
+              <input 
+                type="date" 
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="form-input mono"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">运行结束日期</label>
+              <input 
+                type="date" 
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="form-input mono"
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
             <label className="form-label">总认缴规模 *</label>
             <AmountInput 
               value={totalCommitted} 
@@ -164,7 +239,7 @@ export function Pools() {
             <textarea 
               value={poolDesc}
               onChange={(e) => setPoolDesc(e.target.value)}
-              placeholder="说明资金池投资策略或起止时间"
+              placeholder="说明资金池投资策略..."
               className="form-input"
               rows={3}
               style={{ resize: "none" }}

@@ -3,9 +3,9 @@ import { app } from "./cloudbase";
 // 本地开发模拟数据，保障前端立即可以 WOW 预览
 const mockDb = {
   pools: [
-    { id: "pool-1", name: "2024综合大池 A", description: "年度主要资金池", status: "active", currency: "CNY", total_committed: 50000000, available_balance: 14200000, created_at: "2024-01-01 10:00:00", created_by: "admin" },
-    { id: "pool-2", name: "2024科技成长池 B", description: "高成长性项目专项池", status: "active", currency: "CNY", total_committed: 30000000, available_balance: 8500000, created_at: "2024-02-15 14:30:00", created_by: "admin" },
-    { id: "pool-3", name: "2024新能源子池 C", description: "新能源子项目投资池", status: "active", currency: "CNY", total_committed: 10000000, available_balance: 4200000, created_at: "2024-03-01 09:00:00", created_by: "admin" }
+    { id: "pool-1", name: "2024综合大池 A", description: "年度主要资金池", status: "active", currency: "CNY", total_committed: 50000000, available_balance: 14200000, type: "capital", start_date: "2024-01-01", end_date: "2029-12-31", created_at: "2024-01-01 10:00:00", created_by: "admin" },
+    { id: "pool-2", name: "2024科技成长池 B", description: "高成长性项目专项池", status: "active", currency: "CNY", total_committed: 30000000, available_balance: 8500000, type: "temporary_annually", start_date: "2024-01-01", end_date: "2024-12-31", created_at: "2024-02-15 14:30:00", created_by: "admin" },
+    { id: "pool-3", name: "2024新能源子池 C", description: "新能源子项目投资池", status: "active", currency: "CNY", total_committed: 10000000, available_balance: 4200000, type: "temporary_quarterly", start_date: "2024-01-01", end_date: "2024-03-31", created_at: "2024-03-01 09:00:00", created_by: "admin" }
   ],
   investors: [
     { id: "inv-1", name: "张三", type: "individual", email: "zhangsan@example.com", uid: "uid-zhangsan", phone: "13800001111", contact: "张三", note: "大额个人出资人", created_at: "2024-01-01 10:30:00" },
@@ -82,6 +82,13 @@ function simulateSQL(sql, params) {
     setTimeout(() => {
       // 1. 获取所有资金池
       if (normalizedSql.startsWith("select * from pools")) {
+        // Handle filter by id if queried
+        if (normalizedSql.includes("where id = ?")) {
+          const poolId = params[0];
+          const pool = mockDb.pools.find(p => p.id === poolId);
+          resolve(pool ? [JSON.parse(JSON.stringify(pool))] : []);
+          return;
+        }
         resolve(JSON.parse(JSON.stringify(mockDb.pools)));
         return;
       }
@@ -128,6 +135,18 @@ function simulateSQL(sql, params) {
 
       // 7. 项目列表查询 (带 pool_name)
       if (normalizedSql.includes("select pr.*, p.name as pool_name from projects pr")) {
+        // Check filter by project ID
+        if (normalizedSql.includes("where pr.id = ?")) {
+          const projId = params[0];
+          const pr = mockDb.projects.find(p => p.id === projId);
+          if (pr) {
+            const pool = mockDb.pools.find(p => p.id === pr.pool_id);
+            resolve([JSON.parse(JSON.stringify({ ...pr, pool_name: pool ? pool.name : "未知资金池" }))]);
+          } else {
+            resolve([]);
+          }
+          return;
+        }
         const result = mockDb.projects.map(pr => {
           const pool = mockDb.pools.find(p => p.id === pr.pool_id);
           return { ...pr, pool_name: pool ? pool.name : "未知资金池" };
@@ -139,9 +158,7 @@ function simulateSQL(sql, params) {
 
       // 8. 账本流水列表查询 (带 pool_name, project_name, investor_name)
       if (normalizedSql.includes("from transactions t") && normalizedSql.includes("join pools p") && normalizedSql.includes("left join projects")) {
-        // Let's filter by poolId/projectId/investorId if params exist
-        // But for mock list, we can just return all since we're simulating global list
-        const result = mockDb.transactions.map(t => {
+        let result = mockDb.transactions.map(t => {
           const pool = mockDb.pools.find(p => p.id === t.pool_id);
           const project = mockDb.projects.find(pr => pr.id === t.project_id);
           const investor = mockDb.investors.find(i => i.id === t.investor_id);
@@ -152,6 +169,20 @@ function simulateSQL(sql, params) {
             investor_name: investor ? investor.name : null
           };
         });
+
+        // Apply filters
+        // Check if query filters by pool_id
+        if (normalizedSql.includes("t.pool_id = ?")) {
+          const poolId = params[params.length - 1]; // standard last param, or we can check index
+          // Let's search in params
+          result = result.filter(r => r.pool_id === poolId);
+        }
+        // Check if query filters by project_id
+        if (normalizedSql.includes("t.project_id = ?")) {
+          const projId = params[0];
+          result = result.filter(r => r.project_id === projId);
+        }
+
         result.sort((a, b) => {
           const dateDiff = new Date(b.date) - new Date(a.date);
           if (dateDiff !== 0) return dateDiff;
@@ -199,20 +230,42 @@ function simulateSQL(sql, params) {
 
       // 13. 插入项目
       if (normalizedSql.startsWith("insert into projects")) {
-        const [id, pool_id, name, code, status, committed_amount, description, tags] = params;
-        mockDb.projects.push({
-          id,
-          pool_id,
-          name,
-          code,
-          status,
-          committed_amount: Number(committed_amount),
-          invested_amount: 0.00,
-          returned_amount: 0.00,
-          description,
-          tags: tags ? JSON.parse(tags) : [],
-          created_at: new Date().toISOString()
-        });
+        // Can be length 8 or 10
+        if (params.length >= 10) {
+          const [id, pool_id, name, code, status, committed_amount, description, tags, start_date, expected_end_date] = params;
+          mockDb.projects.push({
+            id,
+            pool_id,
+            name,
+            code,
+            status,
+            committed_amount: Number(committed_amount),
+            invested_amount: 0.00,
+            returned_amount: 0.00,
+            description,
+            tags: tags ? JSON.parse(tags) : [],
+            start_date,
+            expected_end_date,
+            created_at: new Date().toISOString()
+          });
+        } else {
+          const [id, pool_id, name, code, status, committed_amount, description, tags] = params;
+          mockDb.projects.push({
+            id,
+            pool_id,
+            name,
+            code,
+            status,
+            committed_amount: Number(committed_amount),
+            invested_amount: 0.00,
+            returned_amount: 0.00,
+            description,
+            tags: tags ? JSON.parse(tags) : [],
+            start_date: null,
+            expected_end_date: null,
+            created_at: new Date().toISOString()
+          });
+        }
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
         return;
       }
@@ -282,6 +335,27 @@ function simulateSQL(sql, params) {
         return;
       }
 
+      // 18. 插入新资金池
+      if (normalizedSql.startsWith("insert into pools")) {
+        const [id, name, description, total_committed, available_balance, type, start_date, end_date, created_by] = params;
+        mockDb.pools.push({
+          id,
+          name,
+          description,
+          total_committed: Number(total_committed),
+          available_balance: Number(available_balance),
+          type,
+          start_date,
+          end_date,
+          status: "active",
+          currency: "CNY",
+          created_at: new Date().toISOString(),
+          created_by
+        });
+        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+
       // 默认返回空数组
       resolve([]);
     }, 100);
@@ -290,26 +364,6 @@ function simulateSQL(sql, params) {
 
 /**
  * 模拟 SQL 递归份额计算算法
- * 算法逻辑：
- * 目标池：pool-3 (子池 C)
- * 直接成员：
- *   - inv-1 (张三)：直接 10%
- *   - inv-2 (李四)：直接 20%
- * 池间投资：
- *   - pool-1 (大池 A) 投资 pool-3 (子池 C) 占 50%
- *     - 大池 A 成员：inv-1 (张三) 40%, inv-3 (未来资本) 60%
- *     - 张三间接获得：40% * 50% = 20%
- *     - 未来资本间接获得：60% * 50% = 30%
- *   - pool-2 (大池 B) 投资 pool-3 (子池 C) 占 20%
- *     - 大池 B 成员：inv-2 (李四) 20%, inv-3 (未来资本) 80%
- *     - 李四间接获得：20% * 20% = 4%
- *     - 未来资本间接获得：80% * 20% = 16%
- * 
- * 汇总：
- *   - 张三：直接 10% + 间接 20% = 30%
- *   - 李四：直接 20% + 间接 4% = 24%
- *   - 未来资本：直接 0% + 间接 (30% + 16%) = 46%
- *   总有效份额 = 30% + 24% + 46% = 100%
  */
 function calculateEffectiveSharesMock(targetPoolId) {
   if (targetPoolId !== "pool-3") {

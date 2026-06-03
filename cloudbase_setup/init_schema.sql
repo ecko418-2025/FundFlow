@@ -14,6 +14,9 @@ CREATE TABLE `pools` (
   `description` TEXT NULL COMMENT '备注说明',
   `status` VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '状态: active/closed',
   `currency` VARCHAR(10) NOT NULL DEFAULT 'CNY' COMMENT '币种',
+  `type` VARCHAR(50) NOT NULL DEFAULT 'capital' COMMENT '类型: capital/temporary_quarterly/temporary_annually',
+  `start_date` DATE NULL COMMENT '起始日期',
+  `end_date` DATE NULL COMMENT '结束日期',
   `total_committed` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '总认缴规模（元）',
   `available_balance` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '现金可用余额',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -177,10 +180,10 @@ INSERT INTO `users` (uid, email, role, investor_id, display_name) VALUES
 ('uid-future', 'future@example.com', 'lp', 'inv-3', '未来资本');
 
 -- 2. 注入三个资金池 (大池 A, 大池 B, 子池 C)
-INSERT INTO `pools` (id, name, description, total_committed, available_balance, created_by) VALUES 
-('pool-1', '2024综合大池 A', '年度主要资金池', 50000000.00, 14200000.00, 'uid-admin'),
-('pool-2', '2024科技成长池 B', '科技创业项目专项资金池', 30000000.00, 8500000.00, 'uid-admin'),
-('pool-3', '2024新能源子池 C', '由大池A和大池B共同投资的新能源行业子池', 10000000.00, 4200000.00, 'uid-admin');
+INSERT INTO `pools` (id, name, description, total_committed, available_balance, type, start_date, end_date, created_by) VALUES 
+('pool-1', '2024综合大池 A', '年度主要资金池', 50000000.00, 14200000.00, 'capital', '2024-01-01', '2029-12-31', 'uid-admin'),
+('pool-2', '2024科技成长池 B', '科技创业项目专项资金池', 30000000.00, 8500000.00, 'temporary_annually', '2024-01-01', '2024-12-31', 'uid-admin'),
+('pool-3', '2024新能源子池 C', '由大池A和大池B共同投资的新能源行业子池', 10000000.00, 4200000.00, 'temporary_quarterly', '2024-01-01', '2024-03-31', 'uid-admin');
 
 -- 3. 注入资金池直接持股比例
 -- 大池 A (pool-1): 张三占 40%, 未来资本占 60%

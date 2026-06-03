@@ -41,7 +41,7 @@ export function usePools() {
          FROM pool_members pm 
          JOIN investors i ON pm.investor_id = i.id 
          WHERE pm.pool_id = ?`,
-        [poolId]
+         [poolId]
       );
 
       // 3. 获取池下的项目 (projects)
@@ -56,7 +56,7 @@ export function usePools() {
          FROM pool_investments pi 
          JOIN pools p ON pi.child_pool_id = p.id 
          WHERE pi.parent_pool_id = ?`,
-        [poolId]
+         [poolId]
       );
 
       // 5. 获取作为子池，接受哪些母池的投资 (pool_investments -> parent_pools)
@@ -65,7 +65,7 @@ export function usePools() {
          FROM pool_investments pi 
          JOIN pools p ON pi.parent_pool_id = p.id 
          WHERE pi.child_pool_id = ?`,
-        [poolId]
+         [poolId]
       );
 
       return {
@@ -87,8 +87,8 @@ export function usePools() {
   const createPool = async (pool) => {
     const id = `pool-${Date.now()}`;
     const sql = `
-      INSERT INTO pools (id, name, description, total_committed, available_balance, created_by)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO pools (id, name, description, total_committed, available_balance, type, start_date, end_date, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const params = [
       id,
@@ -96,6 +96,9 @@ export function usePools() {
       pool.description || "",
       pool.totalCommitted || 0,
       pool.totalCommitted || 0, // 初始可用余额等于总认缴
+      pool.type || "capital",
+      pool.startDate || null,
+      pool.endDate || null,
       pool.createdBy || "admin"
     ];
     await querySQL(sql, params);

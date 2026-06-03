@@ -61,6 +61,14 @@ export function PoolDetail() {
 
   const { pool, members, projects, childInvestments, parentInvestments } = detail;
 
+  const isExpired = pool.end_date && new Date(pool.end_date) < new Date();
+
+  const poolTypesLabel = {
+    capital: "公司股本金",
+    temporary_quarterly: "季度临时资金",
+    temporary_annually: "年度临时资金"
+  };
+
   const memberHeaders = [
     { key: "investor_name", label: "投资者名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { key: "investor_type", label: "类型", render: (v) => v === "individual" ? "个人" : "机构/基金" },
@@ -126,6 +134,7 @@ export function PoolDetail() {
         <div style={styles.poolTitle}>
           <h2>{pool.name}</h2>
           <Badge text={pool.status === 'active' ? '正常存续中' : '已结清关闭'} status={pool.status} />
+          {isExpired && <span className="badge badge-danger" style={{ textTransform: "none" }}>已到期</span>}
         </div>
       </div>
 
@@ -218,6 +227,20 @@ export function PoolDetail() {
               <div style={styles.infoRow}>
                 <span style={styles.infoLabel}>资金池名称</span>
                 <span>{pool.name}</span>
+              </div>
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>资金池类型</span>
+                <span style={{ fontWeight: 600, color: "var(--accent-gold)" }}>{poolTypesLabel[pool.type] || "公司股本金"}</span>
+              </div>
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>起始运行日期</span>
+                <span className="mono">{formatDate(pool.start_date)}</span>
+              </div>
+              <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>结束运行日期</span>
+                <span className="mono" style={{ color: isExpired ? "var(--accent-red)" : "inherit" }}>
+                  {formatDate(pool.end_date)} {isExpired && "(已到期)"}
+                </span>
               </div>
               <div style={styles.infoRow}>
                 <span style={styles.infoLabel}>当前状态</span>

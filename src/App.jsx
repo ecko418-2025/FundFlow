@@ -10,6 +10,7 @@ import { Pools } from "./pages/admin/Pools";
 import { PoolDetail } from "./pages/admin/PoolDetail";
 import { Investors } from "./pages/admin/Investors";
 import { Projects } from "./pages/admin/Projects";
+import { ProjectDetail } from "./pages/admin/ProjectDetail";
 import { Transactions } from "./pages/admin/Transactions";
 import { Distribution } from "./pages/admin/Distribution";
 import { Reports } from "./pages/admin/Reports";
@@ -97,6 +98,16 @@ function AppContent() {
             <PrivateRoute allowedRole="admin">
               <AppShell user={currentUser} onLogout={logout}>
                 <Projects />
+              </AppShell>
+            </PrivateRoute>
+          } 
+        />
+        <Route 
+          path="/admin/projects/:id" 
+          element={
+            <PrivateRoute allowedRole="admin">
+              <AppShell user={currentUser} onLogout={logout}>
+                <ProjectDetail />
               </AppShell>
             </PrivateRoute>
           } 
