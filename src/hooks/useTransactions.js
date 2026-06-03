@@ -1,0 +1,123 @@
+import { useState, useCallback } from "react";
+import { querySQL } from "../lib/db";
+
+export function useTransactions() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  /**
+   * 查询所有流水
+   */
+  const getTransactions = async (filters = {}) => {
+    let sql = `
+      SELECT t.*, p.name AS pool_name, pr.name AS project_name, i.name AS investor_name 
+      FROM transactions t
+      JOIN pools p ON t.pool_id = p.id
+      LEFT JOIN projects pr ON t.project_id = pr.id
+      LEFT JOIN investors i ON t.investor_id = i.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (filters.poolId) {
+      sql += " AND t.pool_id = ?";
+      params.push(filters.poolId);
+    }
+    if (filters.projectId) {
+      sql += " AND t.project_id = ?";
+      params.push(filters.projectId);
+    }
+    if (filters.investorId) {
+      sql += " AND t.investor_id = ?";
+      params.push(filters.investorId);
+    }
+    if (filters.type) {
+      sql += " AND t.type = ?";
+      params.push(filters.type);
+    }
+
+    sql += " ORDER BY t.date DESC, t.created_at DESC";
+    return await querySQL(sql, params);
+  };
+
+  /**
+   * 记录流水（并在底层自动处理资金池余额或项目投入的变化）
+   */
+  const createTransaction = async (tx) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const txId = `tx-${Date.now()}`;
+      
+      // 1. 插入流水记录
+      const sqlInsert = `
+        INSERT INTO transactions (
+          id, pool_id, project_id, investor_id, type, direction, amount, date, description, reference_no, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      const paramsInsert = [
+        txId,
+        tx.poolId,
+        tx.projectId || null,
+        tx.investorId || null,
+        tx.type,
+        tx.direction,
+        tx.amount,
+        tx.date,
+        tx.description || "",
+        tx.referenceNo || "",
+        tx.createdBy || "admin"
+      ];
+      await querySQL(sqlInsert, paramsInsert);
+
+      // 2. 更新关联资金池的 available_balance 余额
+      // in: 增加余额, out: 减少余额
+      const operator = tx.direction === "in" ? "+" : "-";
+      const sqlUpdatePool = `
+        UPDATE pools 
+        SET available_balance = available_balance ${operator} ? 
+        WHERE id = ?
+      `;
+      await querySQL(sqlUpdatePool, [tx.amount, tx.poolId]);
+
+      // 3. 如果是项目投资(investment)或项目回款(return)，同时更新项目的 invested_amount 或 returned_amount
+      if (tx.projectId) {
+        if (tx.type === "investment") {
+          await querySQL(
+            "UPDATE projects SET invested_amount = invested_amount + ? WHERE id = ?",
+            [tx.amount, tx.projectId]
+          );
+        } else if (tx.type === "return") {
+          await querySQL(
+            "UPDATE projects SET returned_amount = returned_amount + ? WHERE id = ?",
+            [tx.amount, tx.projectId]
+          );
+        }
+      }
+
+      // 4. 如果是出资人实缴(capital_call)，更新 pool_members 中的 called_amount (累计实缴)
+      if (tx.type === "capital_call" && tx.investorId) {
+        await querySQL(
+          "UPDATE pool_members SET called_amount = called_amount + ? WHERE pool_id = ? AND investor_id = ?",
+          [tx.amount, tx.poolId, tx.investorId]
+        );
+      }
+
+      return txId;
+    } catch (err) {
+      console.error("创建流水失败:", err);
+      setError(err.message || "记录流水失败");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    loading,
+    error,
+    getTransactions,
+    createTransaction
+  };
+}
+export default useTransactions;

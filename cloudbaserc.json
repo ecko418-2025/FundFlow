@@ -1,0 +1,22 @@
+{
+  "envId": "cloud1-d2gpq0fat0dd3c17f",
+  "version": "2.0",
+  "functionRoot": "cloudbase_setup/functions",
+  "functions": [
+    {
+      "name": "executeSQL",
+      "timeout": 10,
+      "envVariables": {
+        "DB_HOST": "你的MySQL主机名或IP",
+        "DB_USER": "你的MySQL用户名",
+        "DB_PASSWORD": "你的MySQL密码",
+        "DB_DATABASE": "fundflow",
+        "DB_PORT": "3306"
+      },
+      "vpc": {
+        "vpcId": "vpc-2y09luva",
+        "subnetId": "subnet-4dmrxqvp"
+      }
+    }
+  ]
+}

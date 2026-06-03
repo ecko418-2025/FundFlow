@@ -1,0 +1,9 @@
+{
+  "name": "executesql",
+  "version": "1.0.0",
+  "description": "FundFlow SQL execution proxy function",
+  "main": "index.js",
+  "dependencies": {
+    "mysql2": "^3.9.2"
+  }
+}
