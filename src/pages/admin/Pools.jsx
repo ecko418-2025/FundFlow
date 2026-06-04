@@ -270,10 +270,6 @@ export function Pools() {
           <p>录入各层级实体池子，配置大池向小池投资折算比例。</p>
         </div>
         <div style={styles.actionGroup}>
-          <button onClick={() => setIsLinkModalOpen(true)} className="btn-secondary" style={{ gap: "6px" }}>
-            <Link2 size={18} />
-            <span>配置大池投小池</span>
-          </button>
           <button onClick={handleOpenNewPool} className="btn-primary" style={{ gap: "6px" }}>
             <Plus size={18} />
             <span>新建实体池子</span>
