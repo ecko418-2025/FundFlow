@@ -18,7 +18,7 @@ export function LPStatement({ user }) {
         const sql = `
           SELECT t.*, p.name AS pool_name, pr.name AS project_name
           FROM transactions t
-          JOIN pools p ON t.pool_id = p.id
+          LEFT JOIN pools p ON t.pool_id = p.id
           LEFT JOIN projects pr ON t.project_id = pr.id
           WHERE t.investor_id = ?
           ORDER BY t.date DESC, t.created_at DESC

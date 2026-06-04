@@ -7,10 +7,10 @@
       "name": "executeSQL",
       "timeout": 10,
       "envVariables": {
-        "DB_HOST": "你的MySQL主机名或IP",
-        "DB_USER": "你的MySQL用户名",
-        "DB_PASSWORD": "你的MySQL密码",
-        "DB_DATABASE": "fundflow",
+        "DB_HOST": "172.17.0.9",
+        "DB_USER": "ecko",
+        "DB_PASSWORD": "Ecko0418",
+        "DB_DATABASE": "cloud1-d2gpq0fat0dd3c17f",
         "DB_PORT": "3306"
       },
       "vpc": {

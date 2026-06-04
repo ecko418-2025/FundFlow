@@ -33,6 +33,11 @@ export function Dashboard() {
   const { getTransactions } = useTransactions();
   const [recentTx, setRecentTx] = useState([]);
   const [txLoading, setTxLoading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -198,24 +203,26 @@ export function Dashboard() {
         {/* 左侧：柱状图 */}
         <div style={styles.chartContainer} className="glass-card">
           <h3 style={styles.sectionTitle}>资金池认缴与可用对比（单位：万元）</h3>
-          <div style={{ width: "100%", height: "300px", marginTop: "20px" }}>
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="name" stroke="var(--text-secondary)" />
-                  <YAxis stroke="var(--text-secondary)" />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}
-                    labelStyle={{ color: "var(--text-primary)" }}
-                  />
-                  <Legend />
-                  <Bar dataKey="认缴规模" fill="var(--accent-blue)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="可用余额" fill="var(--accent-gold)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div style={styles.emptyChart}>无有效池子图形数据</div>
+          <div style={{ width: "100%", height: "300px", marginTop: "20px", minWidth: 0 }}>
+            {isMounted && (
+              chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300} minWidth={0}>
+                  <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="name" stroke="var(--text-secondary)" />
+                    <YAxis stroke="var(--text-secondary)" />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}
+                      labelStyle={{ color: "var(--text-primary)" }}
+                    />
+                    <Legend />
+                    <Bar dataKey="认缴规模" fill="var(--accent-blue)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="可用余额" fill="var(--accent-gold)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={styles.emptyChart}>无有效池子图形数据</div>
+              )
             )}
           </div>
         </div>
@@ -223,26 +230,28 @@ export function Dashboard() {
         {/* 历史趋势：折线图 */}
         <div style={styles.chartContainer} className="glass-card">
           <h3 style={styles.sectionTitle}>资产管理规模 (AUM) 历史趋势（单位：万元）</h3>
-          <div style={{ width: "100%", height: "300px", marginTop: "20px" }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={aumHistoryData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="month" stroke="var(--text-secondary)" />
-                <YAxis stroke="var(--text-secondary)" />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}
-                  labelStyle={{ color: "var(--text-primary)" }}
-                />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="管理规模" 
-                  stroke="var(--accent-red)" 
-                  strokeWidth={3}
-                  activeDot={{ r: 6 }} 
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ width: "100%", height: "300px", marginTop: "20px", minWidth: 0 }}>
+            {isMounted && (
+              <ResponsiveContainer width="100%" height={300} minWidth={0}>
+                <LineChart data={aumHistoryData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="month" stroke="var(--text-secondary)" />
+                  <YAxis stroke="var(--text-secondary)" />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: "var(--bg-secondary)", borderColor: "var(--border)" }}
+                    labelStyle={{ color: "var(--text-primary)" }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="管理规模" 
+                    stroke="var(--accent-red)" 
+                    strokeWidth={3}
+                    activeDot={{ r: 6 }} 
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 

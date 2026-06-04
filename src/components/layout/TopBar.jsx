@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Database, AlertTriangle, Cpu } from "lucide-react";
 
 export function TopBar() {
-  const [envId, setEnvId] = useState(localStorage.getItem("CLOUDBASE_ENV_ID") || "fundflow-env-default");
+  const [envId, setEnvId] = useState(localStorage.getItem("CLOUDBASE_ENV_ID") || "cloud1-d2gpq0fat0dd3c17f");
   const [useMock, setUseMock] = useState(localStorage.getItem("USE_MOCK") !== "false");
 
   const handleEnvChange = (e) => {

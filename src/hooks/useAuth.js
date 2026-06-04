@@ -4,6 +4,7 @@ import { auth } from "../lib/cloudbase";
 // Mock 账号定义，方便无痛演示
 const MOCK_USERS = {
   "admin@example.com": { uid: "uid-admin", email: "admin@example.com", role: "admin", displayName: "张总（管理员）", investorId: null },
+  "ecko418@gmail.com": { uid: "uid-ecko418", email: "ecko418@gmail.com", role: "admin", displayName: "ecko418（管理员）", investorId: null },
   "zhangsan@example.com": { uid: "uid-zhangsan", email: "zhangsan@example.com", role: "lp", displayName: "张三（出资人）", investorId: "inv-1" },
   "lisi@example.com": { uid: "uid-lisi", email: "lisi@example.com", role: "lp", displayName: "李四（出资人）", investorId: "inv-2" },
   "future@example.com": { uid: "uid-future", email: "future@example.com", role: "lp", displayName: "未来资本（出资人）", investorId: "inv-3" }
@@ -16,8 +17,9 @@ export function useAuth() {
 
   useEffect(() => {
     // 优先检查本地缓存的 Mock 登录状态
+    const useMock = localStorage.getItem("USE_MOCK") !== "false";
     const savedMockUser = localStorage.getItem("MOCK_USER");
-    if (savedMockUser) {
+    if (useMock && savedMockUser) {
       setCurrentUser(JSON.parse(savedMockUser));
       setLoading(false);
       return;
@@ -48,8 +50,9 @@ export function useAuth() {
     setLoading(true);
     setError(null);
 
-    // 1. 尝试 Mock 账户登录（用于预览）
-    if (MOCK_USERS[email]) {
+    // 1. 尝试 Mock 账户登录（用于预览，仅在 Mock 模式下生效）
+    const useMock = localStorage.getItem("USE_MOCK") !== "false";
+    if (useMock && MOCK_USERS[email]) {
       const mockUser = MOCK_USERS[email];
       localStorage.setItem("MOCK_USER", JSON.stringify(mockUser));
       setCurrentUser(mockUser);

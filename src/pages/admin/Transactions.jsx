@@ -7,7 +7,7 @@ import { Modal } from "../../components/ui/Modal";
 import { AmountInput } from "../../components/ui/AmountInput";
 import { Badge } from "../../components/ui/Badge";
 import { formatCNY, formatDate } from "../../lib/formatters";
-import { Plus, DollarSign, Download, Upload, FileSpreadsheet } from "lucide-react";
+import { Plus, DollarSign, Download, Upload, FileSpreadsheet, Trash2 } from "lucide-react";
 import { exportToExcel, importFromExcel, downloadTemplate } from "../../lib/excel";
 
 const EXPORT_HEADERS_MAP = {
@@ -33,7 +33,7 @@ const IMPORT_HEADERS_MAP = {
 };
 
 export function Transactions() {
-  const { getTransactions, createTransaction } = useTransactions();
+  const { getTransactions, createTransaction, deleteTransaction } = useTransactions();
   const { pools } = usePools();
   
   const [txs, setTxs] = useState([]);
@@ -269,6 +269,19 @@ export function Transactions() {
       alert("流水记账录入成功，并已同步更新相关池余额与实体状态！");
     } catch (err) {
       alert("录入流水失败：" + err.message);
+    }
+  };
+
+  const handleDelete = async (txId) => {
+    const confirmDelete = window.confirm("确定要删除这笔流水吗？此操作将自动扣减或退回相关资金池、项目与出资方的对应金额，且不可恢复！");
+    if (!confirmDelete) return;
+
+    try {
+      await deleteTransaction(txId);
+      alert("流水删除成功，相关余额已自动冲回！");
+      await fetchTxs();
+    } catch (err) {
+      alert("删除流水失败：" + err.message);
     }
   };
 
@@ -520,7 +533,41 @@ export function Transactions() {
       )
     },
     { key: "reference_no", label: "凭证号", className: "mono" },
-    { key: "description", label: "摘要说明" }
+    { key: "description", label: "摘要说明" },
+    {
+      key: "actions",
+      label: "操作",
+      align: "center",
+      render: (_, row) => (
+        <button 
+          onClick={() => handleDelete(row.id)}
+          style={{ 
+            padding: "6px 12px", 
+            fontSize: "0.8rem", 
+            display: "inline-flex", 
+            alignItems: "center", 
+            gap: "4px",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            backgroundColor: "rgba(239, 68, 68, 0.15)",
+            color: "var(--accent-red)",
+            transition: "all 0.2s"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--accent-red)";
+            e.currentTarget.style.color = "#fff";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.15)";
+            e.currentTarget.style.color = "var(--accent-red)";
+          }}
+        >
+          <Trash2 size={14} />
+          <span>删除</span>
+        </button>
+      )
+    }
   ];
 
   return (

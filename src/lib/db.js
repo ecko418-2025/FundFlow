@@ -90,11 +90,18 @@ const mockDb = {
         }
       ])
     }
+  ],
+  users: [
+    { uid: "uid-admin", email: "admin@example.com", role: "admin", investor_id: null, display_name: "系统管理员" },
+    { uid: "uid-ecko418", email: "ecko418@gmail.com", role: "admin", investor_id: null, display_name: "ecko418（管理员）" },
+    { uid: "uid-zhangsan", email: "zhangsan@example.com", role: "lp", investor_id: "inv-1", display_name: "张三" },
+    { uid: "uid-lisi", email: "lisi@example.com", role: "lp", investor_id: "inv-2", display_name: "李四" },
+    { uid: "uid-future", email: "future@example.com", role: "lp", investor_id: "inv-3", display_name: "未来资本" }
   ]
 };
 
-// 是否开启 Mock 模式。默认关闭，只有在 localStorage 中明确设置为 "true" 时才开启
-const USE_MOCK = localStorage.getItem("USE_MOCK") === "true";
+// 是否开启 Mock 模式。默认开启，只有在 localStorage 中明确设置为 "false" 时才关闭
+const USE_MOCK = localStorage.getItem("USE_MOCK") !== "false";
 
 /**
  * 通用 SQL 查询调用封装
@@ -153,6 +160,22 @@ function simulateSQL(sql, params) {
   
   return new Promise((resolve, reject) => {
     setTimeout(() => {
+      // 0a. 查询特定流水 (获取流水详情用于冲回)
+      if (normalizedSql.startsWith("select * from transactions") && normalizedSql.includes("where id = ?")) {
+        const txId = params[0];
+        const tx = mockDb.transactions.find(t => t.id === txId);
+        resolve(tx ? [JSON.parse(JSON.stringify(tx))] : []);
+        return;
+      }
+
+      // 0b. 删除特定流水
+      if (normalizedSql.startsWith("delete from transactions") && normalizedSql.includes("where id = ?")) {
+        const txId = params[0];
+        mockDb.transactions = mockDb.transactions.filter(t => t.id !== txId);
+        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+
       // 1. 获取所有资金池
       if (normalizedSql.startsWith("select * from pools")) {
         const attachDynamicBalance = (pool) => {
@@ -189,6 +212,24 @@ function simulateSQL(sql, params) {
       // Settings 查询
       if (normalizedSql.startsWith("select * from settings")) {
         resolve(JSON.parse(JSON.stringify(mockDb.settings)));
+        return;
+      }
+
+      // Users 查询
+      if (normalizedSql.startsWith("select * from users")) {
+        if (normalizedSql.includes("where investor_id = ?")) {
+          const invId = params[0];
+          const result = (mockDb.users || []).filter(u => u.investor_id === invId);
+          resolve(JSON.parse(JSON.stringify(result)));
+          return;
+        }
+        if (normalizedSql.includes("where uid = ?")) {
+          const uidVal = params[0];
+          const result = (mockDb.users || []).filter(u => u.uid === uidVal);
+          resolve(JSON.parse(JSON.stringify(result)));
+          return;
+        }
+        resolve(JSON.parse(JSON.stringify(mockDb.users || [])));
         return;
       }
 
@@ -507,11 +548,18 @@ function simulateSQL(sql, params) {
         return;
       }
 
-      // 11e. 更新项目出资方累计实际到账（investment 流水触发）
+      // 11e. 更新项目出资方累计实际到账（investment 流水触发/删除冲回）
       if (normalizedSql.startsWith("update project_investors") && normalizedSql.includes("invested_amount")) {
         const [amount, projectId, investorId] = params;
         const pi = (mockDb.project_investors || []).find(r => r.project_id === projectId && r.investor_id === investorId);
-        if (pi) pi.invested_amount += Number(amount);
+        if (pi) {
+          const isSub = normalizedSql.includes("invested_amount - ?") || normalizedSql.includes("invested_amount-?");
+          if (isSub) {
+            pi.invested_amount -= Number(amount);
+          } else {
+            pi.invested_amount += Number(amount);
+          }
+        }
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
         return;
       }
@@ -740,11 +788,17 @@ function simulateSQL(sql, params) {
         const project = mockDb.projects.find(p => p.id === projId);
         if (project) {
           const isInvested = normalizedSql.includes("invested_amount + ?") || normalizedSql.includes("invested_amount+?");
+          const isInvestedSub = normalizedSql.includes("invested_amount - ?") || normalizedSql.includes("invested_amount-?");
           const isReturned = normalizedSql.includes("returned_amount + ?") || normalizedSql.includes("returned_amount+?");
+          const isReturnedSub = normalizedSql.includes("returned_amount - ?") || normalizedSql.includes("returned_amount-?");
           if (isInvested) {
             project.invested_amount += Number(amount);
+          } else if (isInvestedSub) {
+            project.invested_amount -= Number(amount);
           } else if (isReturned) {
             project.returned_amount += Number(amount);
+          } else if (isReturnedSub) {
+            project.returned_amount -= Number(amount);
           }
         }
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
@@ -762,12 +816,17 @@ function simulateSQL(sql, params) {
         return;
       }
 
-      // 17b. 更新成员累计实缴（capital_call 流水触发）
+      // 17b. 更新成员累计实缴（capital_call 流水触发/删除冲回）
       if (normalizedSql.startsWith("update pool_members")) {
         const [amount, poolId, investorId] = params;
         const member = mockDb.pool_members.find(pm => pm.pool_id === poolId && pm.investor_id === investorId);
         if (member) {
-          member.called_amount += Number(amount);
+          const isSub = normalizedSql.includes("called_amount - ?") || normalizedSql.includes("called_amount-?");
+          if (isSub) {
+            member.called_amount -= Number(amount);
+          } else {
+            member.called_amount += Number(amount);
+          }
         }
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
         return;
@@ -791,6 +850,39 @@ function simulateSQL(sql, params) {
           created_at: new Date().toISOString(),
           created_by
         });
+        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+
+      // 19. 更新出资方基本信息与UID
+      if (normalizedSql.startsWith("update investors") && normalizedSql.includes("set name")) {
+        const [name, type, email, uid, phone, contact, note, id] = params;
+        const inv = mockDb.investors.find(i => i.id === id);
+        if (inv) {
+          inv.name = name;
+          inv.type = type;
+          inv.email = email;
+          inv.uid = uid;
+          inv.phone = phone;
+          inv.contact = contact;
+          inv.note = note;
+        }
+        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+
+      // 20. 更新或创建关联登录用户映射表
+      if (normalizedSql.startsWith("update users")) {
+        const [uid, email, display_name, investor_id] = params;
+        if (!mockDb.users) mockDb.users = [];
+        const user = mockDb.users.find(u => u.investor_id === investor_id);
+        if (user) {
+          user.uid = uid;
+          user.email = email;
+          user.display_name = display_name;
+        } else {
+          mockDb.users.push({ uid, email, role: "lp", investor_id, display_name });
+        }
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
         return;
       }

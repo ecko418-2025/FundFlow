@@ -19,6 +19,7 @@ CREATE TABLE `pools` (
   `end_date` DATE NULL COMMENT '结束日期',
   `total_committed` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '总认缴规模（元）',
   `available_balance` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '现金可用余额',
+  `contract_no` VARCHAR(100) NULL COMMENT '合同编号',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `created_by` VARCHAR(128) NOT NULL COMMENT '创建人 Auth UID',
   PRIMARY KEY (`id`)
@@ -78,7 +79,7 @@ CREATE TABLE `pool_investments` (
 DROP TABLE IF EXISTS `projects`;
 CREATE TABLE `projects` (
   `id` VARCHAR(36) NOT NULL COMMENT '项目ID',
-  `pool_id` VARCHAR(36) NOT NULL COMMENT '出资来源资金池ID',
+  `pool_id` VARCHAR(36) NULL COMMENT '出资来源资金池ID',
   `name` VARCHAR(200) NOT NULL COMMENT '项目名称',
   `code` VARCHAR(50) NOT NULL COMMENT '项目唯一编号',
   `status` VARCHAR(20) NOT NULL DEFAULT 'pre' COMMENT '状态: pre(投前)/active(存续)/exited(退出)',
@@ -90,17 +91,33 @@ CREATE TABLE `projects` (
   `returned_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '累计收回项目款',
   `description` TEXT NULL COMMENT '项目描述',
   `tags` JSON NULL COMMENT '标签数组 (MySQL JSON 格式)',
+  `contract_no` VARCHAR(100) NULL COMMENT '合同编号',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_project_code` (`code`),
   FOREIGN KEY (`pool_id`) REFERENCES `pools` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- 5.5. 项目出资方关系表
+DROP TABLE IF EXISTS `project_investors`;
+CREATE TABLE `project_investors` (
+  `id` VARCHAR(36) NOT NULL COMMENT '关系唯一ID',
+  `project_id` VARCHAR(36) NOT NULL COMMENT '项目ID',
+  `investor_id` VARCHAR(36) NOT NULL COMMENT '出资方ID',
+  `committed_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '计划出资额',
+  `invested_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '累计实际到账金额',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '状态',
+  `joined_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '关联时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_proj_inv` (`project_id`, `investor_id`),
+  FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- 6. 流水账本表
 DROP TABLE IF EXISTS `transactions`;
 CREATE TABLE `transactions` (
   `id` VARCHAR(36) NOT NULL COMMENT '流水ID',
-  `pool_id` VARCHAR(36) NOT NULL COMMENT '所属资金池ID',
+  `pool_id` VARCHAR(36) NULL COMMENT '所属资金池ID',
   `project_id` VARCHAR(36) NULL COMMENT '关联的项目ID',
   `investor_id` VARCHAR(36) NULL COMMENT '关联的出资方ID',
   `related_pool_id` VARCHAR(36) NULL COMMENT '关联对方资金池ID（适用于池间调拨流水）',
@@ -153,6 +170,14 @@ CREATE TABLE `distribution_items` (
   FOREIGN KEY (`investor_id`) REFERENCES `investors` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- 8.5. 系统全局配置表
+DROP TABLE IF EXISTS `settings`;
+CREATE TABLE `settings` (
+  `key` VARCHAR(50) NOT NULL COMMENT '设置键',
+  `value` LONGTEXT NULL COMMENT '设置值 (JSON 字符串)',
+  PRIMARY KEY (`key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- 9. 系统用户与角色关系表
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
@@ -177,6 +202,7 @@ INSERT INTO `investors` (id, name, type, email, uid, phone, contact, note) VALUE
 
 INSERT INTO `users` (uid, email, role, investor_id, display_name) VALUES 
 ('uid-admin', 'admin@example.com', 'admin', NULL, '系统管理员'),
+('2062179704411439105', 'ecko418@gmail.com', 'admin', NULL, 'ecko418（管理员）'),
 ('uid-zhangsan', 'zhangsan@example.com', 'lp', 'inv-1', '张三'),
 ('uid-lisi', 'lisi@example.com', 'lp', 'inv-2', '李四'),
 ('uid-future', 'future@example.com', 'lp', 'inv-3', '未来资本');
@@ -214,5 +240,19 @@ INSERT INTO `transactions` (id, pool_id, project_id, investor_id, type, directio
 ('tx-1', 'pool-1', NULL, 'inv-1', 'capital_call', 'in', 15000000.00, '2024-01-02', '张三第一期实缴出资', 'RE-20240102-01', 'uid-admin'),
 ('tx-2', 'pool-1', NULL, 'inv-3', 'capital_call', 'in', 20800000.00, '2024-01-02', '未来资本首期出资', 'RE-20240102-02', 'uid-admin'),
 ('tx-3', 'pool-1', 'proj-1', NULL, 'investment', 'out', 15000000.00, '2024-01-15', '向芯片项目打款第一笔', 'PAY-20240115-01', 'uid-admin');
+
+-- 7. 注入项目出资方数据
+INSERT INTO `project_investors` (id, project_id, investor_id, committed_amount, invested_amount, status, joined_at) VALUES
+('pi-inv-1', 'proj-1', 'pool-1', 15000000.00, 15000000.00, 'active', '2024-01-10 12:00:00'),
+('pi-inv-2', 'proj-1', 'inv-1', 5000000.00, 5000000.00, 'active', '2024-01-10 12:00:00'),
+('pi-inv-3', 'proj-2', 'pool-2', 10000000.00, 10000000.00, 'active', '2024-03-05 12:00:00'),
+('pi-inv-4', 'proj-3', 'pool-1', 10000000.00, 10000000.00, 'active', '2024-04-10 12:00:00'),
+('pi-inv-5', 'proj-3', 'inv-3', 20000000.00, 20000000.00, 'active', '2024-04-10 12:00:00'),
+('pi-inv-6', 'proj-4', 'pool-3', 10000000.00, 10000000.00, 'active', '2024-05-05 12:00:00'),
+('pi-inv-7', 'proj-4', 'pool-2', 5000000.00, 5000000.00, 'active', '2024-05-05 12:00:00');
+
+-- 8. 注入系统全局配置数据
+INSERT INTO `settings` (`key`, `value`) VALUES 
+('system_tags', '[{"id":"cat_attr","name":"公司属性分类","color":"var(--accent-blue)","tags":["芯片","硬科技","人工智能","低空经济","机器人","固态电池","新能源","AI","高端制造"]},{"id":"cat_team","name":"团队分类标签","color":"var(--accent-gold)","tags":[]},{"id":"cat_nature","name":"项目性质标签","color":"var(--accent-green)","tags":[]}]');
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -35,9 +35,91 @@ export function Investors() {
   const [name, setName] = useState("");
   const [type, setType] = useState("individual");
   const [email, setEmail] = useState("");
+  const [cloudbaseUid, setCloudbaseUid] = useState("");
   const [phone, setPhone] = useState("");
   const [contact, setContact] = useState("");
   const [note, setNote] = useState("");
+
+  // 编辑出资方表单状态
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingInvestor, setEditingInvestor] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState("individual");
+  const [editEmail, setEditEmail] = useState("");
+  const [editUid, setEditUid] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editContact, setEditContact] = useState("");
+  const [editNote, setEditNote] = useState("");
+
+  const openEditModal = (inv) => {
+    setEditingInvestor(inv);
+    setEditName(inv.name || "");
+    setEditType(inv.type || "individual");
+    setEditEmail(inv.email || "");
+    setEditUid(inv.uid || "");
+    setEditPhone(inv.phone || "");
+    setEditContact(inv.contact || "");
+    setEditNote(inv.note || "");
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!editName || !editEmail) return;
+    try {
+      const targetUid = editUid.trim() || `uid-${editName.toLowerCase().replace(/\s+/g, "")}`;
+      // 1. 更新 investors 表
+      const sql = `
+        UPDATE investors 
+        SET name = ?, type = ?, email = ?, uid = ?, phone = ?, contact = ?, note = ?
+        WHERE id = ?
+      `;
+      await querySQL(sql, [
+        editName,
+        editType,
+        editEmail,
+        targetUid,
+        editPhone,
+        editContact || editName,
+        editNote,
+        editingInvestor.id
+      ]);
+
+      // 2. 更新 users 表中的 uid, email, display_name
+      const usersData = await querySQL("SELECT * FROM users WHERE investor_id = ?", [editingInvestor.id]);
+      if (usersData && usersData.length > 0) {
+        const userSql = `
+          UPDATE users 
+          SET uid = ?, email = ?, display_name = ?
+          WHERE investor_id = ?
+        `;
+        await querySQL(userSql, [
+          targetUid,
+          editEmail,
+          editName,
+          editingInvestor.id
+        ]);
+      } else {
+        const userSql = `
+          INSERT INTO users (uid, email, role, investor_id, display_name)
+          VALUES (?, ?, 'lp', ?, ?)
+        `;
+        await querySQL(userSql, [
+          targetUid,
+          editEmail,
+          editingInvestor.id,
+          editName
+        ]);
+      }
+
+      setIsEditModalOpen(false);
+      setEditingInvestor(null);
+      await fetchInvestors();
+      alert("出资方信息及关联账号更新成功！");
+    } catch (err) {
+      alert("更新出资方失败：" + err.message);
+    }
+  };
 
   const fetchInvestors = async () => {
     setLoading(true);
@@ -66,13 +148,14 @@ export function Investors() {
       `;
       // uid 可以暂时生成一个 mock 格式，对应 mock 登录
       const mockUid = `uid-${name.toLowerCase().replace(/\s+/g, "")}`;
+      const actualUid = cloudbaseUid.trim() || mockUid;
       
       await querySQL(sql, [
         invId,
         name,
         type,
         email,
-        mockUid,
+        actualUid,
         phone,
         contact || name,
         note
@@ -84,7 +167,7 @@ export function Investors() {
         VALUES (?, ?, 'lp', ?, ?)
       `;
       await querySQL(userSql, [
-        mockUid,
+        actualUid,
         email,
         invId,
         name
@@ -95,6 +178,7 @@ export function Investors() {
       setPhone("");
       setContact("");
       setNote("");
+      setCloudbaseUid("");
       setIsModalOpen(false);
       await fetchInvestors();
       alert("出资人录入并已创建关联登录账号！");
@@ -245,10 +329,23 @@ export function Investors() {
     { key: "name", label: "出资人/机构名称", render: (v, item) => <Link to={`/admin/investors/${item.id}`} className="text-link" style={{ fontWeight: 600 }}>{v}</Link> },
     { key: "type", label: "类型", render: (v) => <Badge text={v === 'individual' ? '个人 LPs' : '机构基金 LPs'} status={v} /> },
     { key: "email", label: "登录及对账邮箱", className: "mono" },
+    { key: "uid", label: "云开发 UID", className: "mono", render: (v) => v || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>未绑定</span> },
     { key: "phone", label: "联系电话" },
     { key: "contact", label: "主要对接人" },
     { key: "note", label: "备注摘要" },
-    { key: "created_at", label: "录入时间", render: (v) => formatDate(v) }
+    { 
+      key: "actions", 
+      label: "操作", 
+      render: (_, item) => (
+        <button 
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditModal(item); }} 
+          className="btn-secondary" 
+          style={{ padding: "4px 8px", fontSize: "0.8rem", height: "auto" }}
+        >
+          编辑 / 绑定 UID
+        </button>
+      )
+    }
   ];
 
   return (
@@ -334,6 +431,17 @@ export function Investors() {
           </div>
 
           <div className="form-group">
+            <label className="form-label">云开发 Auth UID (选填)</label>
+            <input 
+              type="text" 
+              value={cloudbaseUid}
+              onChange={(e) => setCloudbaseUid(e.target.value)}
+              placeholder="云开发控制台生成的 UID，不填则自动生成演示 Mock UID"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
             <label className="form-label">联系电话</label>
             <input 
               type="text" 
@@ -370,6 +478,96 @@ export function Investors() {
           <div style={styles.modalActions}>
             <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">取消</button>
             <button type="submit" className="btn-primary">确认录入</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditingInvestor(null); }} title="编辑出资方信息 & 绑定 UID">
+        <form onSubmit={handleUpdate} style={styles.form}>
+          <div className="form-group">
+            <label className="form-label">出资方名称 *</label>
+            <input 
+              type="text" 
+              required
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="如：张三 或 招商局母基金二期"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">投资者性质 *</label>
+            <select 
+              value={editType} 
+              onChange={(e) => setEditType(e.target.value)}
+              className="form-input"
+            >
+              <option value="individual">个人投资者 (Individual)</option>
+              <option value="fund">机构基金/母基金 (Fund)</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">对账/登录邮箱 *</label>
+            <input 
+              type="email" 
+              required
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              placeholder="如：zhangsan@example.com"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">云开发 Auth UID (选填)</label>
+            <input 
+              type="text" 
+              value={editUid}
+              onChange={(e) => setEditUid(e.target.value)}
+              placeholder="绑定腾讯云开发的 Auth UID (W-xYz...)"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">联系电话</label>
+            <input 
+              type="text" 
+              value={editPhone}
+              onChange={(e) => setEditPhone(e.target.value)}
+              placeholder="如：13800000000"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">核心对接人姓名</label>
+            <input 
+              type="text" 
+              value={editContact}
+              onChange={(e) => setEditContact(e.target.value)}
+              placeholder="主要联系人"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">出资人备注说明</label>
+            <textarea 
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="补充说明"
+              className="form-input"
+              rows={3}
+              style={{ resize: "none" }}
+            />
+          </div>
+
+          <div style={styles.modalActions}>
+            <button type="button" onClick={() => { setIsEditModalOpen(false); setEditingInvestor(null); }} className="btn-secondary">取消</button>
+            <button type="submit" className="btn-primary">保存修改</button>
           </div>
         </form>
       </Modal>

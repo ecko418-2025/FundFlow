@@ -124,11 +124,79 @@ export function useTransactions() {
     }
   };
 
+  /**
+   * 删除流水并冲回涉及的资金池/项目/出资人财务数据
+   */
+  const deleteTransaction = async (txId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. 查询该流水明细，用于金额冲回
+      const txs = await querySQL("SELECT * FROM transactions WHERE id = ?", [txId]);
+      if (!txs || txs.length === 0) {
+        throw new Error("未找到该流水记录");
+      }
+      const tx = txs[0];
+
+      // 2. 扣减或退回涉及资金池的可用余额
+      if (tx.pool_id) {
+        const operator = tx.direction === "in" ? "-" : "+";
+        const sqlUpdatePool = `
+          UPDATE pools 
+          SET available_balance = available_balance ${operator} ? 
+          WHERE id = ?
+        `;
+        await querySQL(sqlUpdatePool, [tx.amount, tx.pool_id]);
+      }
+
+      // 3. 冲回项目的已投/已回金额
+      if (tx.project_id) {
+        if (tx.type === "investment") {
+          await querySQL(
+            "UPDATE projects SET invested_amount = invested_amount - ? WHERE id = ?",
+            [tx.amount, tx.project_id]
+          );
+          if (tx.investor_id) {
+             await querySQL(
+               "UPDATE project_investors SET invested_amount = invested_amount - ? WHERE project_id = ? AND investor_id = ?",
+               [tx.amount, tx.project_id, tx.investor_id]
+             );
+          }
+        } else if (tx.type === "return") {
+          await querySQL(
+            "UPDATE projects SET returned_amount = returned_amount - ? WHERE id = ?",
+            [tx.amount, tx.project_id]
+          );
+        }
+      }
+
+      // 4. 冲回出资人累计实缴
+      if (tx.type === "capital_call" && tx.pool_id && tx.investor_id) {
+        await querySQL(
+          "UPDATE pool_members SET called_amount = called_amount - ? WHERE pool_id = ? AND investor_id = ?",
+          [tx.amount, tx.pool_id, tx.investor_id]
+        );
+      }
+
+      // 5. 从数据库删除此交易记录
+      await querySQL("DELETE FROM transactions WHERE id = ?", [txId]);
+
+      return true;
+    } catch (err) {
+      console.error("删除流水失败:", err);
+      setError(err.message || "删除流水失败");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     loading,
     error,
     getTransactions,
-    createTransaction
+    createTransaction,
+    deleteTransaction
   };
 }
 export default useTransactions;

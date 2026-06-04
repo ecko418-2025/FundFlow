@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { AppShell } from "./components/layout/AppShell";
 
@@ -45,7 +45,7 @@ function AppContent() {
   };
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         {/* 登录页面 */}
         <Route 
@@ -194,7 +194,7 @@ function AppContent() {
           element={<Navigate to={currentUser ? (currentUser.role === "admin" ? "/admin" : "/lp") : "/login"} replace />} 
         />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
