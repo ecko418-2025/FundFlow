@@ -42,18 +42,6 @@ export function TopBar() {
             {useMock ? "演示 Mock 数据激活" : "腾讯云开发 SQL 连接中"}
           </span>
         </button>
-
-        {/* 腾讯云环境配置框 */}
-        <div style={styles.inputContainer}>
-          <Database size={16} color="var(--text-secondary)" />
-          <input 
-            type="text" 
-            value={envId} 
-            onChange={handleEnvChange}
-            placeholder="云开发环境 ID"
-            style={styles.envInput}
-          />
-        </div>
       </div>
     </header>
   );
