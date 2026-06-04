@@ -1,15 +1,8 @@
 import React, { useState } from "react";
-import { Database, AlertTriangle, Cpu } from "lucide-react";
+import { AlertTriangle, Cpu } from "lucide-react";
 
 export function TopBar() {
-  const [envId, setEnvId] = useState(localStorage.getItem("CLOUDBASE_ENV_ID") || "cloud1-d2gpq0fat0dd3c17f");
   const [useMock, setUseMock] = useState(localStorage.getItem("USE_MOCK") !== "false");
-
-  const handleEnvChange = (e) => {
-    const val = e.target.value;
-    setEnvId(val);
-    localStorage.setItem("CLOUDBASE_ENV_ID", val);
-  };
 
   const toggleMock = () => {
     const nextVal = !useMock;
