@@ -3,6 +3,7 @@ import { querySQL } from "../../lib/db";
 import { DataTable } from "../../components/ui/DataTable";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
+import { Link } from "react-router-dom";
 import { formatDate } from "../../lib/formatters";
 import { Plus, Users, Download, Upload, FileSpreadsheet } from "lucide-react";
 import { exportToExcel, importFromExcel, downloadTemplate } from "../../lib/excel";
@@ -241,7 +242,7 @@ export function Investors() {
   };
 
   const headers = [
-    { key: "name", label: "出资人/机构名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { key: "name", label: "出资人/机构名称", render: (v, item) => <Link to={`/admin/investors/${item.id}`} className="text-link" style={{ fontWeight: 600 }}>{v}</Link> },
     { key: "type", label: "类型", render: (v) => <Badge text={v === 'individual' ? '个人 LPs' : '机构基金 LPs'} status={v} /> },
     { key: "email", label: "登录及对账邮箱", className: "mono" },
     { key: "phone", label: "联系电话" },
@@ -286,7 +287,7 @@ export function Investors() {
         </button>
       </div>
 
-      <div className="glass-card" style={{ padding: "20px" }}>
+      <div className="glass-card no-hover" style={{ padding: "20px" }}>
         <DataTable 
           headers={headers} 
           data={investors} 

@@ -9,14 +9,19 @@ export function useDistribution() {
    * 获取某资金池的分配历史
    */
   const getDistributions = async (poolId) => {
-    const sql = `
-      SELECT d.*, p.name AS project_name 
+    let sql = `
+      SELECT d.*, p.name AS project_name, p.code AS project_code, pl.name AS pool_name, pl.contract_no AS pool_code
       FROM distributions d
       LEFT JOIN projects p ON d.project_id = p.id
-      WHERE d.pool_id = ?
-      ORDER BY d.distribution_date DESC, d.created_at DESC
+      LEFT JOIN pools pl ON d.pool_id = pl.id
     `;
-    return await querySQL(sql, [poolId]);
+    const params = [];
+    if (poolId) {
+      sql += ` WHERE d.pool_id = ?`;
+      params.push(poolId);
+    }
+    sql += ` ORDER BY d.distribution_date DESC, d.created_at DESC`;
+    return await querySQL(sql, params);
   };
 
   /**
@@ -24,9 +29,10 @@ export function useDistribution() {
    */
   const getDistributionDetails = async (distId) => {
     const sql = `
-      SELECT di.*, i.name AS investor_name 
+      SELECT di.*, COALESCE(i.name, pl.name) AS investor_name 
       FROM distribution_items di
-      JOIN investors i ON di.investor_id = i.id
+      LEFT JOIN investors i ON di.investor_id = i.id
+      LEFT JOIN pools pl ON di.investor_id = pl.id
       WHERE di.distribution_id = ?
     `;
     return await querySQL(sql, [distId]);
@@ -76,33 +82,9 @@ export function useDistribution() {
           item.amount
         ]);
 
-        // 3. 如果是立即确认状态，自动为每位出资人生成一条收益分配流入流水(direction='out'，因为是钱离开大池分给个人)
-        if (isConfirmed) {
-          const txId = `tx-dist-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-          const txSql = `
-            INSERT INTO transactions (
-              id, pool_id, project_id, investor_id, type, direction, amount, date, description, created_by
-            ) VALUES (?, ?, ?, ?, 'distribution', 'out', ?, ?, ?, 'admin')
-          `;
-          await querySQL(txSql, [
-            txId,
-            dist.poolId,
-            dist.projectId || null,
-            item.investor_id,
-            item.amount,
-            dist.distributionDate,
-            `收益分配: ${dist.description || "按份额比例分配"}`
-          ]);
-        }
       }
 
-      // 4. 如果是确认分配，自动扣减该池子的可用余额 available_balance
-      if (isConfirmed) {
-        await querySQL(
-          "UPDATE pools SET available_balance = available_balance - ? WHERE id = ?",
-          [dist.totalAmount, dist.poolId]
-        );
-      }
+      // 不再自动扣减或增加任何实体（池子、项目）的真实余额。仅作为分配台账记录。
 
       return distId;
     } catch (err) {
@@ -114,12 +96,29 @@ export function useDistribution() {
     }
   };
 
+  const deleteDistribution = async (distId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await querySQL(`DELETE FROM distribution_items WHERE distribution_id = ?`, [distId]);
+      await querySQL(`DELETE FROM distributions WHERE id = ?`, [distId]);
+      return true;
+    } catch (err) {
+      console.error("删除分配记录失败:", err);
+      setError(err.message || "删除分配记录失败");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     loading,
     error,
     getDistributions,
     getDistributionDetails,
-    createDistribution
+    createDistribution,
+    deleteDistribution
   };
 }
 export default useDistribution;

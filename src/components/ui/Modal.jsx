@@ -1,12 +1,12 @@
 import React from "react";
 import { X } from "lucide-react";
 
-export function Modal({ isOpen, onClose, title, children }) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = "580px" }) {
   if (!isOpen) return null;
 
   return (
     <div style={styles.overlay}>
-      <div style={styles.modal} className="glass-card">
+      <div style={{ ...styles.modal, maxWidth }} className="glass-card">
         {/* 头部 */}
         <div style={styles.header}>
           <h3 style={styles.title}>{title}</h3>

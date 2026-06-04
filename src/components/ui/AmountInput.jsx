@@ -24,19 +24,18 @@ export function AmountInput({ value, onChange, placeholder = "请输入金额", 
 
   const handleChange = (e) => {
     const val = e.target.value;
-    setDisplayValue(val);
-    
-    // 如果是合法数字，向上触发 onChange
-    const cleanNum = Number(val);
-    if (!isNaN(cleanNum)) {
-      onChange(val === "" ? "" : cleanNum);
+    // Allow only numbers, commas, and a single decimal point
+    if (/^[0-9.,]*$/.test(val)) {
+      setDisplayValue(val);
     }
+    // Do NOT call onChange here; defer until blur for proper formatting
   };
 
   const handleBlur = () => {
     // 失焦时，重新进行格式化显示
-    const num = Number(displayValue.replace(/,/g, ""));
-    if (!isNaN(num) && displayValue !== "") {
+    const raw = displayValue.replace(/,/g, "");
+    const num = Number(raw);
+    if (!isNaN(num) && raw !== "") {
       onChange(num);
       setDisplayValue(num.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     } else {

@@ -9,11 +9,13 @@ import { Dashboard } from "./pages/admin/Dashboard";
 import { Pools } from "./pages/admin/Pools";
 import { PoolDetail } from "./pages/admin/PoolDetail";
 import { Investors } from "./pages/admin/Investors";
+import { InvestorDetail } from "./pages/admin/InvestorDetail";
 import { Projects } from "./pages/admin/Projects";
 import { ProjectDetail } from "./pages/admin/ProjectDetail";
 import { Transactions } from "./pages/admin/Transactions";
 import { Distribution } from "./pages/admin/Distribution";
 import { Reports } from "./pages/admin/Reports";
+import { Settings } from "./pages/admin/Settings";
 
 import { LPDashboard } from "./pages/lp/LPDashboard";
 import { LPStatement } from "./pages/lp/LPStatement";
@@ -93,6 +95,16 @@ function AppContent() {
           } 
         />
         <Route 
+          path="/admin/investors/:id" 
+          element={
+            <PrivateRoute allowedRole="admin">
+              <AppShell user={currentUser} onLogout={logout}>
+                <InvestorDetail />
+              </AppShell>
+            </PrivateRoute>
+          } 
+        />
+        <Route 
           path="/admin/projects" 
           element={
             <PrivateRoute allowedRole="admin">
@@ -138,6 +150,17 @@ function AppContent() {
             <PrivateRoute allowedRole="admin">
               <AppShell user={currentUser} onLogout={logout}>
                 <Reports />
+              </AppShell>
+            </PrivateRoute>
+          } 
+        />
+
+        <Route 
+          path="/admin/settings" 
+          element={
+            <PrivateRoute allowedRole="admin">
+              <AppShell user={currentUser} onLogout={logout}>
+                <Settings />
               </AppShell>
             </PrivateRoute>
           } 

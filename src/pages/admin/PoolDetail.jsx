@@ -6,24 +6,42 @@ import { useDistribution } from "../../hooks/useDistribution";
 import { StatCard } from "../../components/ui/StatCard";
 import { DataTable } from "../../components/ui/DataTable";
 import { Badge } from "../../components/ui/Badge";
+import { Modal } from "../../components/ui/Modal";
+import { AmountInput } from "../../components/ui/AmountInput";
+import { querySQL } from "../../lib/db";
 import { formatCNY, formatPercent, formatDate } from "../../lib/formatters";
 import { 
   ArrowLeft, 
   Layers, 
   DollarSign, 
-  TrendingUp, 
   Users, 
   Briefcase,
   History,
-  Info
+  Info,
+  Plus,
+  Pencil
 } from "lucide-react";
 
 export function PoolDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getPoolDetail } = usePools();
+  const { getPoolDetail, addPoolMember, addPoolInvestment, updatePoolMember } = usePools();
   const { getTransactions } = useTransactions();
   const { getDistributions } = useDistribution();
+
+  // 添加出资人弹窗状态
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [newMembers, setNewMembers] = useState(
+    Array.from({ length: 5 }, () => ({ id: "", amount: "", type: "" }))
+  );
+  const [allInvestors, setAllInvestors] = useState([]);
+  const [allPools, setAllPools] = useState([]);
+
+  // 编辑出资人弹窗状态
+  const [isEditMemberOpen, setIsEditMemberOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [editMemberCommitted, setEditMemberCommitted] = useState("");
+  const [editMemberSharePct, setEditMemberSharePct] = useState("");
 
   const [activeTab, setActiveTab] = useState("overview");
   const [detail, setDetail] = useState(null);
@@ -38,10 +56,8 @@ export function PoolDetail() {
     try {
       const poolDetail = await getPoolDetail(id);
       setDetail(poolDetail);
-
       const txList = await getTransactions({ poolId: id });
       setTxs(txList);
-
       const distList = await getDistributions(id);
       setDists(distList);
     } catch (err) {
@@ -51,9 +67,79 @@ export function PoolDetail() {
     }
   }, [id]);
 
+  const loadSelectOptions = useCallback(async () => {
+    try {
+      const [investors, pools] = await Promise.all([
+        querySQL("SELECT * FROM investors ORDER BY created_at DESC"),
+        querySQL("SELECT * FROM pools ORDER BY created_at DESC")
+      ]);
+      setAllInvestors(investors);
+      setAllPools(pools.filter(p => p.id !== id));
+    } catch (e) {
+      console.warn("加载选项失败", e);
+    }
+  }, [id]);
+
   useEffect(() => {
     loadPoolDetails();
-  }, [loadPoolDetails]);
+    loadSelectOptions();
+  }, [loadPoolDetails, loadSelectOptions]);
+
+  const handleOpenAddMember = () => {
+    setNewMembers(Array.from({ length: 5 }, () => ({ id: "", amount: "", type: "" })));
+    setIsAddMemberOpen(true);
+  };
+
+  const handleAddMemberSubmit = async (e) => {
+    e.preventDefault();
+    const validMembers = newMembers.filter(m => m.id && m.amount && Number(m.amount) > 0);
+    if (validMembers.length === 0) {
+      alert("请至少完整填写一行有效的出资方和金额");
+      return;
+    }
+
+    try {
+      for (const member of validMembers) {
+        if (member.type === 'investor') {
+          await addPoolMember({ poolId: id, investorId: member.id, committedAmount: Number(member.amount) });
+        } else if (member.type === 'pool') {
+          await addPoolInvestment({ parentPoolId: member.id, childPoolId: id, investedAmount: Number(member.amount), note: "" });
+        }
+      }
+      setIsAddMemberOpen(false);
+      setNewMembers(Array.from({ length: 5 }, () => ({ id: "", amount: "", type: "" })));
+      await loadPoolDetails();
+      alert("批量添加出资人成功！");
+    } catch (err) {
+      alert("批量添加失败：" + err.message);
+    }
+  };
+
+  const handleOpenEditMember = (member) => {
+    setEditingMember(member);
+    setEditMemberCommitted(String(member.committed_amount));
+    setEditMemberSharePct(String(member.share_pct));
+    setIsEditMemberOpen(true);
+  };
+
+  const handleEditMemberSubmit = async (e) => {
+    e.preventDefault();
+    if (!editMemberCommitted || Number(editMemberCommitted) <= 0) {
+      alert("认缴参考额必须大于 0");
+      return;
+    }
+    try {
+      await updatePoolMember(id, editingMember.investor_id, {
+        committedAmount: Number(editMemberCommitted)
+      });
+      setIsEditMemberOpen(false);
+      setEditingMember(null);
+      await loadPoolDetails();
+      alert("认缴参考额已更新！持股比例将根据实缴金额自动计算。");
+    } catch (err) {
+      alert("更新失败：" + err.message);
+    }
+  };
 
   if (loading) return <div style={styles.loading}>数据深度加载中...</div>;
   if (error) return <div style={styles.error}><Info color="red" /> {error}</div>;
@@ -69,17 +155,52 @@ export function PoolDetail() {
     temporary_annually: "年度临时资金"
   };
 
+  // 计算全池累计实缴总额（用于动态比例）
+  const totalCalledAmount = members.reduce((sum, m) => sum + (m.called_amount || 0), 0);
+
   const memberHeaders = [
     { key: "investor_name", label: "投资者名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { key: "investor_type", label: "类型", render: (v) => v === "individual" ? "个人" : "机构/基金" },
-    { key: "committed_amount", label: "直接认缴", render: (v) => formatCNY(v, false) },
-    { key: "called_amount", label: "直接已实缴", render: (v) => formatCNY(v, false) },
-    { key: "share_pct", label: "直接持股比例", align: "right", render: (v) => <span className="mono amt-bold">{formatPercent(v)}</span> }
+    { key: "committed_amount", label: "认缴参考额", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)" }}>{formatCNY(v, false)}</span> },
+    { key: "called_amount", label: "实缴金额", render: (v) => <span className="mono" style={{ color: "var(--accent-green)", fontWeight: 700 }}>{formatCNY(v, false)}</span> },
+    {
+      key: "called_amount",
+      label: "实缴持股比例",
+      align: "right",
+      render: (v) => {
+        const pct = totalCalledAmount > 0 ? (v / totalCalledAmount * 100) : 0;
+        return (
+          <div style={{ textAlign: "right" }}>
+            <span className="mono amt-bold" style={{ color: "var(--accent-gold)" }}>
+              {pct.toFixed(4)}%
+            </span>
+            {totalCalledAmount === 0 && (
+              <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)", display: "block" }}>待实缴后自动计算</span>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      key: "investor_id",
+      label: "操作",
+      align: "right",
+      render: (v, row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); handleOpenEditMember(row); }}
+          className="btn-secondary"
+          style={{ padding: "5px 10px", fontSize: "0.78rem", gap: "4px" }}
+        >
+          <Pencil size={12} />
+          <span>编辑认缴</span>
+        </button>
+      )
+    }
   ];
 
   const projectHeaders = [
     { key: "name", label: "项目名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { key: "code", label: "项目编号", render: (v) => <span className="badge badge-active">{v}</span> },
+    { key: "code", label: "项目 ID", render: (v, row) => <span className="badge badge-active">{row.id}</span> },
     { key: "status", label: "状态", render: (v) => {
         const labels = { pre: "投前", active: "存续中", exited: "已退出" };
         return <Badge text={labels[v] || v} status={v} />;
@@ -91,22 +212,66 @@ export function PoolDetail() {
   ];
 
   const txHeaders = [
-    { key: "date", label: "交易日期", render: (v) => formatDate(v) },
-    { key: "type", label: "流水类型", render: (v) => {
-        const typeMap = {
-          capital_call: "实缴出资",
-          investment: "项目投资",
-          return: "项目回款",
-          distribution: "收益分配",
-          fee: "管理费/支出",
-          pool_transfer_out: "资金划出",
-          pool_transfer_in: "资金划入"
-        };
-        return typeMap[v] || v;
+    { key: "date", label: "发生日期", render: (v) => formatDate(v) },
+    { 
+      key: "sourceName", 
+      label: "出账方 (Source)", 
+      render: (_, row) => {
+        let name = "未知";
+        if (row.type === "capital_call") name = row.investor_name;
+        else if (row.type === "investment") name = row.investor_name || row.pool_name;
+        else if (row.type === "return" || row.type === "distribution") name = row.project_name;
+        else if (row.type === "pool_transfer_out") name = row.pool_name;
+        else if (row.type === "pool_transfer_in") name = row.related_pool_name;
+        else name = row.direction === "in" ? "外部来源" : (row.pool_name || "未知");
+        
+        return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
       }
     },
-    { key: "direction", label: "流入/流出", render: (v) => <Badge text={v === 'in' ? '流入' : '流出'} status={v} /> },
-    { key: "amount", label: "发生金额", align: "right", render: (v, row) => (
+    { 
+      key: "targetName", 
+      label: "进账方 (Target)", 
+      render: (_, row) => {
+        let name = "未知";
+        if (row.type === "capital_call") name = row.pool_name;
+        else if (row.type === "investment") name = row.project_name;
+        else if (row.type === "return" || row.type === "distribution") name = row.investor_name || row.pool_name;
+        else if (row.type === "pool_transfer_out") name = row.related_pool_name;
+        else if (row.type === "pool_transfer_in") name = row.pool_name;
+        else name = row.direction === "in" ? (row.pool_name || "未知") : "外部去向";
+        
+        return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
+      }
+    },
+    { 
+      key: "type", 
+      label: "交易类型", 
+      render: (v) => {
+        const typeMap = {
+          capital_call: "LP实缴打款",
+          investment: "项目投资",
+          return: "项目回款",
+          distribution: "收益分红",
+          fee: "管理费/支出",
+          pool_transfer_out: "资金池划出",
+          pool_transfer_in: "资金池划入",
+          adjustment: "人工核校"
+        };
+        const colorMap = {
+          capital_call: "warning", // 金色
+          investment: "danger", // 红色
+          pool_transfer_out: "default", // 灰色
+          pool_transfer_in: "default", // 灰色
+        };
+        const badgeStatus = colorMap[v] || "success";
+        return <Badge text={typeMap[v] || v} status={badgeStatus} />;
+      }
+    },
+    { 
+      key: "amount", 
+      label: "金额", 
+      align: "right",
+      render: (v, row) => (
         <span className={`mono amt-bold ${row.direction === 'in' ? 'amt-in' : 'amt-out'}`}>
           {row.direction === 'in' ? '+' : '-'}{formatCNY(v, false)}
         </span>
@@ -157,19 +322,21 @@ export function PoolDetail() {
         />
         <StatCard 
           title="直接出资人" 
-          value={members.length} 
-          unit="人"
-          subtext="本级持股名单"
+          value={members.length + parentInvestments.length} 
+          unit="人/池"
+          subtext="点击查看本级出资方名单"
           icon={Users}
           color="var(--accent-green)"
+          onClick={() => setActiveTab("investors")}
         />
         <StatCard 
           title="关联投向项目" 
           value={projects.length} 
           unit="个"
-          subtext="由本池出资的组合"
+          subtext="点击查看关联项目列表"
           icon={Briefcase}
           color="var(--accent-red)"
+          onClick={() => setActiveTab("projects")}
         />
       </div>
 
@@ -225,6 +392,10 @@ export function PoolDetail() {
                 <span className="mono">{pool.id}</span>
               </div>
               <div style={styles.infoRow}>
+                <span style={styles.infoLabel}>相关合同编号</span>
+                <span className="mono">{pool.contract_no || "无"}</span>
+              </div>
+              <div style={styles.infoRow}>
                 <span style={styles.infoLabel}>资金池名称</span>
                 <span>{pool.name}</span>
               </div>
@@ -278,8 +449,8 @@ export function PoolDetail() {
                     >
                       <span style={{ fontWeight: 600 }}>{pi.parent_pool_name}</span>
                       <div style={styles.linkValues}>
-                        <span className="mono">投资了 {formatCNY(pi.invested_amount, false)}</span>
-                        <span className="badge badge-active">{formatPercent(pi.share_pct)}</span>
+                        <span className="mono">实际到账 {formatCNY(pi.actual_invested_amount, false)}</span>
+                        <span className="badge badge-active">当前占比 {formatPercent(pi.dynamic_share_pct)}</span>
                       </div>
                     </div>
                   ))
@@ -300,8 +471,8 @@ export function PoolDetail() {
                     >
                       <span style={{ fontWeight: 600 }}>{pi.child_pool_name}</span>
                       <div style={styles.linkValues}>
-                        <span className="mono">已拨付 {formatCNY(pi.invested_amount, false)}</span>
-                        <span className="badge badge-warning">{formatPercent(pi.share_pct)}</span>
+                        <span className="mono">实际拨付流水 {formatCNY(pi.actual_invested_amount, false)}</span>
+                        <span className="badge badge-warning">当前占比 {formatPercent(pi.dynamic_share_pct)}</span>
                       </div>
                     </div>
                   ))
@@ -313,32 +484,223 @@ export function PoolDetail() {
 
         {/* 2. 出资方 Tab */}
         {activeTab === "investors" && (
-          <div className="glass-card">
-            <DataTable headers={memberHeaders} data={members} emptyMessage="当前池子暂无直接LP出资记录" />
+          <div className="glass-card no-hover" style={{ padding: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>直接出资人名单</h3>
+              <button onClick={handleOpenAddMember} className="btn-primary" style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}>
+                <Plus size={15} /><span>添加出资人</span>
+              </button>
+            </div>
+            <DataTable headers={memberHeaders} data={members} emptyMessage="当前池子暂无直接LP出资记录，点击右上角添加" />
+            {parentInvestments.length > 0 && (
+              <div style={{ marginTop: "24px" }}>
+                <h4 style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: "12px" }}>母资金池出资方</h4>
+                {parentInvestments.map(pi => (
+                  <div key={pi.id} onClick={() => navigate(`/admin/pools/${pi.parent_pool_id}`)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderRadius: "8px", background: "var(--surface-secondary)", marginBottom: "8px", cursor: "pointer" }}>
+                    <span style={{ fontWeight: 600 }}>🏦 {pi.parent_pool_name}</span>
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                      <span className="mono">{formatCNY(pi.invested_amount, false)}</span>
+                      <span className="badge badge-warning">{formatPercent(pi.share_pct)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* 3. 项目 Tab */}
         {activeTab === "projects" && (
-          <div className="glass-card">
+          <div className="glass-card no-hover">
             <DataTable headers={projectHeaders} data={projects} emptyMessage="当前资金池暂无投资项目记录" />
           </div>
         )}
 
         {/* 4. 流水 Tab */}
-        {activeTab === "ledger" && (
-          <div className="glass-card">
-            <DataTable headers={txHeaders} data={txs} emptyMessage="当前资金池暂无流水变动账目" />
-          </div>
-        )}
+        {activeTab === "ledger" && (() => {
+          // 统计有实缴流水的出资人
+          const capitalCallInvestors = [
+            ...new Map(
+              txs.filter(t => t.type === "capital_call" && t.investor_name)
+                 .map(t => [t.investor_id, t.investor_name])
+            ).entries()
+          ];
+          return (
+            <div className="glass-card no-hover" style={{ padding: "20px" }}>
+              {capitalCallInvestors.length > 0 && (
+                <div style={{ marginBottom: "16px", padding: "12px 16px", background: "rgba(34,197,94,0.06)", borderRadius: "8px", border: "1px solid rgba(34,197,94,0.15)" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginRight: "10px" }}>💰 已有实缴流水的出资人：</span>
+                  {capitalCallInvestors.map(([invId, invName]) => (
+                    <span key={invId} className="badge badge-active" style={{ marginRight: "6px", fontWeight: 600 }}>{invName}</span>
+                  ))}
+                </div>
+              )}
+              <DataTable headers={txHeaders} data={txs} emptyMessage="当前资金池暂无流水变动账目" />
+            </div>
+          );
+        })()}
 
         {/* 5. 分配 Tab */}
         {activeTab === "dists" && (
-          <div className="glass-card">
+          <div className="glass-card no-hover">
             <DataTable headers={distHeaders} data={dists} emptyMessage="当前资金池暂无历史收益分配记录" />
           </div>
         )}
       </div>
+
+      {/* 添加出资人弹窗 */}
+      <Modal isOpen={isAddMemberOpen} onClose={() => setIsAddMemberOpen(false)} title="批量添加出资方" maxWidth="800px">
+        <form onSubmit={handleAddMemberSubmit} style={{ ...styles.form, minWidth: '100%' }}>
+          <div style={{ maxHeight: '60vh', overflowY: 'auto', marginBottom: '16px', paddingRight: '4px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '10px 8px', fontWeight: 600, color: 'var(--text-secondary)' }}>选择出资方 (资金池 / 独立投资人) *</th>
+                  <th style={{ padding: '10px 8px', fontWeight: 600, color: 'var(--text-secondary)' }}>认缴/投资额 (元) *</th>
+                  <th style={{ padding: '10px 8px', width: '60px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {newMembers.map((item, index) => (
+                  <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={{ padding: '8px' }}>
+                      <select 
+                        value={item.id ? `${item.type}_${item.id}` : ""} 
+                        onChange={(e) => {
+                          const newList = [...newMembers];
+                          const val = e.target.value;
+                          if (!val) {
+                            newList[index].id = "";
+                            newList[index].type = "";
+                          } else {
+                            const [type, ...idParts] = val.split('_');
+                            newList[index].type = type;
+                            newList[index].id = idParts.join('_');
+                          }
+                          setNewMembers(newList);
+                        }} 
+                        className="form-input" 
+                      >
+                        <option value="">-- 请选择 --</option>
+                        <optgroup label="关联母资金池">
+                          {allPools.map(p => {
+                            const isExists = detail?.parentInvestments?.some(pi => pi.parent_pool_id === p.id);
+                            const isSelected = newMembers.some((nm, idx) => idx !== index && nm.type === 'pool' && nm.id === p.id);
+                            if (isExists || isSelected) return null;
+                            return <option key={`pool_${p.id}`} value={`pool_${p.id}`}>🏦 {p.name}</option>;
+                          })}
+                        </optgroup>
+                        <optgroup label="独立出资人 (机构/个人)">
+                          {allInvestors.map(inv => {
+                            const isExists = detail?.members?.some(m => m.investor_id === inv.id);
+                            const isSelected = newMembers.some((nm, idx) => idx !== index && nm.type === 'investor' && nm.id === inv.id);
+                            if (isExists || isSelected) return null;
+                            return (
+                              <option key={`investor_${inv.id}`} value={`investor_${inv.id}`}>
+                                👤 {inv.name} ({inv.type === "individual" ? "个人" : "机构"})
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+                      </select>
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="number"
+                        className="form-input"
+                        placeholder="请输入金额"
+                        value={item.amount}
+                        onChange={(e) => {
+                          const newList = [...newMembers];
+                          newList[index].amount = e.target.value;
+                          setNewMembers(newList);
+                        }}
+                      />
+                    </td>
+                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newList = newMembers.filter((_, i) => i !== index);
+                          setNewMembers(newList.length ? newList : [{ id: "", amount: "", type: "" }]);
+                        }}
+                        style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '1.2rem' }}
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setNewMembers([...newMembers, { id: "", amount: "", type: "" }])}
+            className="btn-secondary"
+            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+          >
+            + 增加一行
+          </button>
+          
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "16px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+            <button type="button" onClick={() => setIsAddMemberOpen(false)} className="btn-secondary">取消</button>
+            <button type="submit" className="btn-primary">确认批量添加</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 编辑出资人弹窗 */}
+      <Modal isOpen={isEditMemberOpen} onClose={() => setIsEditMemberOpen(false)} title={`编辑出资人：${editingMember?.investor_name || ""}`}>
+        {editingMember && (
+          <form onSubmit={handleEditMemberSubmit} style={{ display: "flex", flexDirection: "column" }}>
+            {/* 只读信息展示 */}
+            <div style={{ display: "flex", gap: "12px", marginBottom: "16px", padding: "12px 14px", background: "var(--surface-secondary)", borderRadius: "8px" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: "4px" }}>出资人名称</div>
+                <div style={{ fontWeight: 700 }}>{editingMember.investor_name}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: "4px" }}>类型</div>
+                <div>{editingMember.investor_type === "individual" ? "👤 个人" : "🏦 机构/基金"}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: "4px" }}>已实缴金额</div>
+                <div className="mono" style={{ color: "var(--accent-green)", fontWeight: 700 }}>{formatCNY(editingMember.called_amount, false)}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: "4px" }}>实缴持股比例</div>
+                <div className="mono" style={{ color: "var(--accent-gold)", fontWeight: 700 }}>
+                  {totalCalledAmount > 0 ? (editingMember.called_amount / totalCalledAmount * 100).toFixed(4) : "0.0000"}%
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "10px 14px", background: "rgba(251,191,36,0.07)", borderRadius: "8px", marginBottom: "16px", border: "1px solid rgba(251,191,36,0.2)" }}>
+              <p style={{ fontSize: "0.78rem", color: "var(--accent-gold)", margin: 0 }}>
+                💡 <strong>持股比例自动计算</strong>：将根据各出资人的实缴金额占全池实缴总额的比例自动得出，无需手动设置。此处仅支持修改「认缴参考额」。
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">认缴参考额（元）
+                <span style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginLeft: "6px", fontWeight: 400 }}>（仅作计划参考，不影响持股比例）</span>
+              </label>
+              <AmountInput value={editMemberCommitted} onChange={setEditMemberCommitted} placeholder="认缴总额目标（元）" />
+              {editingMember.called_amount > 0 && Number(editMemberCommitted) < editingMember.called_amount && (
+                <p style={{ fontSize: "0.75rem", color: "var(--accent-gold)", marginTop: "6px" }}>
+                  ⚠️ 认缴参考额低于已实缴金额（{formatCNY(editingMember.called_amount, false)}），请确认是否正确。
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "16px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+              <button type="button" onClick={() => setIsEditMemberOpen(false)} className="btn-secondary">取消</button>
+              <button type="submit" className="btn-primary">保存认缴参考额</button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -402,7 +764,7 @@ const styles = {
   },
   tabBtnActive: {
     color: "var(--accent-blue)",
-    borderBottomColor: "var(--accent-blue)",
+    borderBottom: "2px solid var(--accent-blue)",
     fontWeight: "600"
   },
   tabContent: {

@@ -6,18 +6,20 @@ import { AmountInput } from "../../components/ui/AmountInput";
 import { formatCNY, formatPercent, formatDate } from "../../lib/formatters";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "../../components/ui/Badge";
-import { Plus, Link2, Eye } from "lucide-react";
+import { Plus, Link2, Eye, Pencil, Search } from "lucide-react";
 
 export function Pools() {
   const navigate = useNavigate();
-  const { pools, loading, createPool, addPoolInvestment } = usePools();
+  const { pools, loading, createPool, addPoolInvestment, updatePool } = usePools();
   
   // 模态弹窗控制
   const [isPoolModalOpen, setIsPoolModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   
   // 新建资金池表单状态
+  const [poolId, setPoolId] = useState("");
   const [poolName, setPoolName] = useState("");
+  const [poolContractNo, setPoolContractNo] = useState("");
   const [poolDesc, setPoolDesc] = useState("");
   const [totalCommitted, setTotalCommitted] = useState("");
   const [poolType, setPoolType] = useState("capital");
@@ -31,9 +33,64 @@ export function Pools() {
   const [sharePct, setSharePct] = useState("");
   const [linkNote, setLinkNote] = useState("");
 
+  // 编辑资金池状态
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPool, setEditingPool] = useState(null);
+  const [editPoolId, setEditPoolId] = useState("");
+  const [editPoolName, setEditPoolName] = useState("");
+  const [editPoolContractNo, setEditPoolContractNo] = useState("");
+  const [editPoolDesc, setEditPoolDesc] = useState("");
+  const [editTotalCommitted, setEditTotalCommitted] = useState("");
+  const [editPoolType, setEditPoolType] = useState("capital");
+  const [editPoolStatus, setEditPoolStatus] = useState("active");
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editEndDate, setEditEndDate] = useState("");
+
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [startDateFrom, setStartDateFrom] = useState("");
+  const [startDateTo, setStartDateTo] = useState("");
+
+  const filteredPools = React.useMemo(() => {
+    let result = pools;
+
+    if (searchKeyword) {
+      const keyword = searchKeyword.toLowerCase();
+      result = result.filter(p => p.name.toLowerCase().includes(keyword) || p.id.toLowerCase().includes(keyword) || (p.contract_no && p.contract_no.toLowerCase().includes(keyword)));
+    }
+
+    if (filterStatus) {
+      result = result.filter(p => p.status === filterStatus);
+    }
+
+    if (startDateFrom) {
+      result = result.filter(p => p.start_date && p.start_date >= startDateFrom);
+    }
+
+    if (startDateTo) {
+      result = result.filter(p => p.start_date && p.start_date <= startDateTo);
+    }
+
+    return result;
+  }, [pools, searchKeyword, filterStatus, startDateFrom, startDateTo]);
+
+  const handleOpenNewPool = () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    let newId = "";
+    let attempts = 0;
+    do {
+      const random3 = Math.floor(100 + Math.random() * 900);
+      newId = `Pro-${dateStr}-${random3}`;
+      attempts++;
+    } while (pools.some(p => p.id === newId) && attempts < 100);
+    
+    setPoolId(newId);
+    setIsPoolModalOpen(true);
+  };
+
   const handleCreatePool = async (e) => {
     e.preventDefault();
-    if (!poolName || !totalCommitted) return;
+    if (!poolId || !poolName || !totalCommitted) return;
     
     if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
       alert("结束日期不能早于起始日期！");
@@ -42,7 +99,9 @@ export function Pools() {
 
     try {
       await createPool({
+        id: poolId,
         name: poolName,
+        contractNo: poolContractNo,
         description: poolDesc,
         totalCommitted: Number(totalCommitted),
         type: poolType,
@@ -51,7 +110,9 @@ export function Pools() {
         createdBy: "admin"
       });
       // 重置表单并关闭
+      setPoolId("");
       setPoolName("");
+      setPoolContractNo("");
       setPoolDesc("");
       setTotalCommitted("");
       setPoolType("capital");
@@ -94,6 +155,50 @@ export function Pools() {
     }
   };
 
+  // 打开编辑弹窗，预填当前数据
+  const handleOpenEdit = (pool, e) => {
+    e.stopPropagation();
+    setEditingPool(pool);
+    setEditPoolId(pool.id);
+    setEditPoolName(pool.name);
+    setEditPoolContractNo(pool.contract_no || "");
+    setEditPoolDesc(pool.description || "");
+    setEditTotalCommitted(String(pool.total_committed));
+    setEditPoolType(pool.type || "capital");
+    setEditPoolStatus(pool.status || "active");
+    setEditStartDate(pool.start_date ? pool.start_date.slice(0, 10) : "");
+    setEditEndDate(pool.end_date ? pool.end_date.slice(0, 10) : "");
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditPoolSubmit = async (e) => {
+    e.preventDefault();
+    if (!editPoolName || !editTotalCommitted) return;
+
+    if (editStartDate && editEndDate && new Date(editEndDate) < new Date(editStartDate)) {
+      alert("结束日期不能早于起始日期！");
+      return;
+    }
+
+    try {
+      await updatePool(editingPool.id, {
+        name: editPoolName,
+        contractNo: editPoolContractNo,
+        description: editPoolDesc,
+        totalCommitted: Number(editTotalCommitted),
+        type: editPoolType,
+        status: editPoolStatus,
+        startDate: editStartDate || null,
+        endDate: editEndDate || null
+      });
+      setIsEditModalOpen(false);
+      setEditingPool(null);
+      alert("资金池信息已更新！");
+    } catch (err) {
+      alert("更新失败：" + err.message);
+    }
+  };
+
   const poolTypesLabel = {
     capital: "公司股本金",
     temporary_quarterly: "季度临时资金",
@@ -102,6 +207,7 @@ export function Pools() {
 
   const headers = [
     { key: "name", label: "资金池名称", render: (v, row) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { key: "id", label: "资金池 ID", render: (v) => <span className="mono badge badge-active">{v}</span> },
     { 
       key: "type", 
       label: "类型", 
@@ -129,18 +235,28 @@ export function Pools() {
       key: "id", 
       label: "操作", 
       align: "right",
-      render: (v) => (
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/admin/pools/${v}`);
-          }}
-          className="btn-secondary"
-          style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
-        >
-          <Eye size={14} />
-          <span>详情账本</span>
-        </button>
+      render: (v, row) => (
+        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+          <button 
+            onClick={(e) => handleOpenEdit(row, e)}
+            className="btn-secondary"
+            style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
+          >
+            <Pencil size={14} />
+            <span>编辑</span>
+          </button>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/admin/pools/${v}`);
+            }}
+            className="btn-secondary"
+            style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
+          >
+            <Eye size={14} />
+            <span>详情账本</span>
+          </button>
+        </div>
       )
     }
   ];
@@ -158,19 +274,63 @@ export function Pools() {
             <Link2 size={18} />
             <span>配置大池投小池</span>
           </button>
-          <button onClick={() => setIsPoolModalOpen(true)} className="btn-primary" style={{ gap: "6px" }}>
+          <button onClick={handleOpenNewPool} className="btn-primary" style={{ gap: "6px" }}>
             <Plus size={18} />
             <span>新建实体池子</span>
           </button>
         </div>
       </div>
 
+      {/* 搜索与筛选栏 */}
+      <div className="glass-card no-hover" style={{ padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", backgroundColor: "rgba(9, 13, 26, 0.5)", marginBottom: "20px" }}>
+        <div className="search-box" style={{ width: "260px" }}>
+          <Search size={16} className="search-icon" />
+          <input 
+            type="text" 
+            placeholder="搜索资金池名称、编号..." 
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            className="search-input"
+          />
+        </div>
+
+        <select 
+          value={filterStatus} 
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="form-input"
+          style={{ width: "160px" }}
+        >
+          <option value="">全部状态</option>
+          <option value="active">运营中</option>
+          <option value="closed">已关闭</option>
+        </select>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>起始日期范围：</span>
+          <input 
+            type="date" 
+            value={startDateFrom}
+            onChange={(e) => setStartDateFrom(e.target.value)}
+            className="form-input"
+            style={{ width: "140px" }}
+          />
+          <span style={{ color: 'var(--text-secondary)' }}>至</span>
+          <input 
+            type="date" 
+            value={startDateTo}
+            onChange={(e) => setStartDateTo(e.target.value)}
+            className="form-input"
+            style={{ width: "140px" }}
+          />
+        </div>
+      </div>
+
       {/* 资金池列表表格 */}
-      <div className="glass-card" style={{ padding: "20px" }}>
+      <div className="glass-card no-hover" style={{ padding: "20px" }}>
         <DataTable 
           headers={headers} 
-          data={pools} 
-          emptyMessage={loading ? "加载中..." : "暂无已录入资金池，请先点击右上角创建"}
+          data={filteredPools} 
+          emptyMessage={loading ? "加载中..." : "暂无符合条件的资金池"}
           onRowClick={(row) => navigate(`/admin/pools/${row.id}`)}
         />
       </div>
@@ -178,6 +338,30 @@ export function Pools() {
       {/* 弹窗 1：创建资金池 */}
       <Modal isOpen={isPoolModalOpen} onClose={() => setIsPoolModalOpen(false)} title="新建资金池 (MySQL Entity)">
         <form onSubmit={handleCreatePool} style={styles.form}>
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">资金池 ID *</label>
+              <input 
+                type="text" 
+                required
+                value={poolId}
+                onChange={(e) => setPoolId(e.target.value)}
+                placeholder="如：Pro-20240101-123"
+                className="form-input mono"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">相关合同编号</label>
+              <input 
+                type="text" 
+                value={poolContractNo}
+                onChange={(e) => setPoolContractNo(e.target.value)}
+                placeholder="如：HT-2024-001"
+                className="form-input mono"
+              />
+            </div>
+          </div>
+
           <div className="form-group">
             <label className="form-label">资金池名称 *</label>
             <input 
@@ -329,6 +513,119 @@ export function Pools() {
           <div style={styles.modalActions}>
             <button type="button" onClick={() => setIsLinkModalOpen(false)} className="btn-secondary">取消</button>
             <button type="submit" className="btn-primary">完成关联配置</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 弹窗 3：编辑资金池 */}
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`编辑资金池：${editingPool?.name || ""}`}>
+        <form onSubmit={handleEditPoolSubmit} style={styles.form}>
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">资金池 ID</label>
+              <input 
+                type="text" 
+                disabled
+                value={editPoolId}
+                className="form-input mono"
+                style={{ backgroundColor: "var(--background)", cursor: "not-allowed" }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">相关合同编号</label>
+              <input 
+                type="text" 
+                value={editPoolContractNo}
+                onChange={(e) => setEditPoolContractNo(e.target.value)}
+                placeholder="如：HT-2024-001"
+                className="form-input mono"
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">资金池名称 *</label>
+            <input 
+              type="text" 
+              required
+              value={editPoolName}
+              onChange={(e) => setEditPoolName(e.target.value)}
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">资金池类型 *</label>
+              <select 
+                value={editPoolType} 
+                onChange={(e) => setEditPoolType(e.target.value)}
+                className="form-input"
+                required
+              >
+                <option value="capital">公司股本金 (Share Capital)</option>
+                <option value="temporary_quarterly">季度临时资金 (Quarterly Temporary Fund)</option>
+                <option value="temporary_annually">年度临时资金 (Annual Temporary Fund)</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">当前状态 *</label>
+              <select 
+                value={editPoolStatus} 
+                onChange={(e) => setEditPoolStatus(e.target.value)}
+                className="form-input"
+                required
+              >
+                <option value="active">运营中 (Active)</option>
+                <option value="closed">已关闭/清算 (Closed)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">运行起始日期</label>
+              <input 
+                type="date" 
+                value={editStartDate}
+                onChange={(e) => setEditStartDate(e.target.value)}
+                className="form-input mono"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">运行结束日期</label>
+              <input 
+                type="date" 
+                value={editEndDate}
+                onChange={(e) => setEditEndDate(e.target.value)}
+                className="form-input mono"
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">总认缴规模 *</label>
+            <AmountInput 
+              value={editTotalCommitted} 
+              onChange={setEditTotalCommitted} 
+              placeholder="请输入总认缴规模（元）"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">备注说明</label>
+            <textarea 
+              value={editPoolDesc}
+              onChange={(e) => setEditPoolDesc(e.target.value)}
+              className="form-input"
+              rows={3}
+              style={{ resize: "none" }}
+            />
+          </div>
+
+          <div style={styles.modalActions}>
+            <button type="button" onClick={() => setIsEditModalOpen(false)} className="btn-secondary">取消</button>
+            <button type="submit" className="btn-primary">保存修改</button>
           </div>
         </form>
       </Modal>

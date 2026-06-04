@@ -1,8 +1,15 @@
 import React from "react";
 
-export function StatCard({ title, value, unit = "", subtext = "", trend = null, icon: Icon = null, color = "var(--accent-blue)" }) {
+export function StatCard({ title, value, unit = "", subtext = "", trend = null, icon: Icon = null, color = "var(--accent-blue)", onClick = null }) {
+  const clickable = typeof onClick === "function";
   return (
-    <div style={styles.card}>
+    <div
+      style={{
+        ...styles.card,
+        ...(clickable ? styles.cardClickable : {})
+      }}
+      onClick={clickable ? onClick : undefined}
+    >
       {/* 顶部标题与图标 */}
       <div style={styles.header}>
         <span style={styles.title}>{title}</span>
@@ -27,6 +34,7 @@ export function StatCard({ title, value, unit = "", subtext = "", trend = null, 
           </span>
         )}
         <span style={styles.subtext}>{subtext}</span>
+        {clickable && <span style={{ fontSize: "0.7rem", color: color, marginLeft: "auto" }}>点击查看 →</span>}
       </div>
     </div>
   );
@@ -43,6 +51,10 @@ const styles = {
     minWidth: "220px",
     boxShadow: "0 8px 30px rgba(0, 0, 0, 0.3)",
     transition: "all 0.2s ease"
+  },
+  cardClickable: {
+    cursor: "pointer",
+    border: "1px solid rgba(255, 255, 255, 0.10)",
   },
   header: {
     display: "flex",

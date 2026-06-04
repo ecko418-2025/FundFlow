@@ -9,7 +9,8 @@ import {
   PieChart, 
   FileText,
   LogOut,
-  Layers
+  Layers,
+  Settings
 } from "lucide-react";
 
 export function Sidebar({ user, onLogout }) {
@@ -22,7 +23,8 @@ export function Sidebar({ user, onLogout }) {
     { name: "出资方管理", path: "/admin/investors", icon: Users },
     { name: "项目管理", path: "/admin/projects", icon: Briefcase },
     { name: "核心流水账", path: "/admin/transactions", icon: DollarSign },
-    { name: "收益分配", path: "/admin/distribution", icon: PieChart }
+    { name: "收益分配", path: "/admin/distribution", icon: PieChart },
+    { name: "系统设置", path: "/admin/settings", icon: Settings }
   ];
 
   const lpMenu = [

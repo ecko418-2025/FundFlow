@@ -4,12 +4,14 @@ export function Badge({ text, status }) {
   let badgeStyle = styles.default;
   const lowerStatus = String(status).toLowerCase();
 
-  if (lowerStatus === "active" || lowerStatus === "in" || lowerStatus === "confirmed") {
+  if (lowerStatus === "active" || lowerStatus === "in" || lowerStatus === "confirmed" || lowerStatus === "success") {
     badgeStyle = styles.success;
-  } else if (lowerStatus === "pre" || lowerStatus === "draft" || lowerStatus === "pending") {
+  } else if (lowerStatus === "pre" || lowerStatus === "draft" || lowerStatus === "pending" || lowerStatus === "warning") {
     badgeStyle = styles.warning;
-  } else if (lowerStatus === "exited" || lowerStatus === "out" || lowerStatus === "closed") {
+  } else if (lowerStatus === "exited" || lowerStatus === "out" || lowerStatus === "closed" || lowerStatus === "danger") {
     badgeStyle = styles.danger;
+  } else if (lowerStatus === "default") {
+    badgeStyle = styles.default;
   }
 
   return (

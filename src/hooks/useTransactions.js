@@ -10,9 +10,10 @@ export function useTransactions() {
    */
   const getTransactions = async (filters = {}) => {
     let sql = `
-      SELECT t.*, p.name AS pool_name, pr.name AS project_name, i.name AS investor_name 
+      SELECT t.*, p.name AS pool_name, pr.name AS project_name, i.name AS investor_name, rp.name AS related_pool_name 
       FROM transactions t
-      JOIN pools p ON t.pool_id = p.id
+      LEFT JOIN pools p ON t.pool_id = p.id
+      LEFT JOIN pools rp ON t.related_pool_id = rp.id
       LEFT JOIN projects pr ON t.project_id = pr.id
       LEFT JOIN investors i ON t.investor_id = i.id
       WHERE 1=1
@@ -52,14 +53,15 @@ export function useTransactions() {
       // 1. 插入流水记录
       const sqlInsert = `
         INSERT INTO transactions (
-          id, pool_id, project_id, investor_id, type, direction, amount, date, description, reference_no, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, pool_id, project_id, investor_id, related_pool_id, type, direction, amount, date, description, reference_no, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const paramsInsert = [
         txId,
         tx.poolId,
         tx.projectId || null,
         tx.investorId || null,
+        tx.relatedPoolId || null,
         tx.type,
         tx.direction,
         tx.amount,
@@ -72,13 +74,15 @@ export function useTransactions() {
 
       // 2. 更新关联资金池的 available_balance 余额
       // in: 增加余额, out: 减少余额
-      const operator = tx.direction === "in" ? "+" : "-";
-      const sqlUpdatePool = `
-        UPDATE pools 
-        SET available_balance = available_balance ${operator} ? 
-        WHERE id = ?
-      `;
-      await querySQL(sqlUpdatePool, [tx.amount, tx.poolId]);
+      if (tx.poolId) {
+        const operator = tx.direction === "in" ? "+" : "-";
+        const sqlUpdatePool = `
+          UPDATE pools 
+          SET available_balance = available_balance ${operator} ? 
+          WHERE id = ?
+        `;
+        await querySQL(sqlUpdatePool, [tx.amount, tx.poolId]);
+      }
 
       // 3. 如果是项目投资(investment)或项目回款(return)，同时更新项目的 invested_amount 或 returned_amount
       if (tx.projectId) {
@@ -87,6 +91,13 @@ export function useTransactions() {
             "UPDATE projects SET invested_amount = invested_amount + ? WHERE id = ?",
             [tx.amount, tx.projectId]
           );
+          // 如果关联了具体项目出资方，则更新该出资方的实际到账累计额
+          if (tx.investorId) {
+             await querySQL(
+               "UPDATE project_investors SET invested_amount = invested_amount + ? WHERE project_id = ? AND investor_id = ?",
+               [tx.amount, tx.projectId, tx.investorId]
+             );
+          }
         } else if (tx.type === "return") {
           await querySQL(
             "UPDATE projects SET returned_amount = returned_amount + ? WHERE id = ?",
@@ -96,7 +107,7 @@ export function useTransactions() {
       }
 
       // 4. 如果是出资人实缴(capital_call)，更新 pool_members 中的 called_amount (累计实缴)
-      if (tx.type === "capital_call" && tx.investorId) {
+      if (tx.type === "capital_call" && tx.poolId && tx.investorId) {
         await querySQL(
           "UPDATE pool_members SET called_amount = called_amount + ? WHERE pool_id = ? AND investor_id = ?",
           [tx.amount, tx.poolId, tx.investorId]

@@ -103,6 +103,7 @@ CREATE TABLE `transactions` (
   `pool_id` VARCHAR(36) NOT NULL COMMENT '所属资金池ID',
   `project_id` VARCHAR(36) NULL COMMENT '关联的项目ID',
   `investor_id` VARCHAR(36) NULL COMMENT '关联的出资方ID',
+  `related_pool_id` VARCHAR(36) NULL COMMENT '关联对方资金池ID（适用于池间调拨流水）',
   `type` VARCHAR(30) NOT NULL COMMENT '类型: capital_call/investment/return/distribution/fee/pool_transfer_out/pool_transfer_in',
   `direction` VARCHAR(3) NOT NULL COMMENT '流向: in(流入池)/out(流出池)',
   `amount` DECIMAL(18,2) NOT NULL COMMENT '流水金额',
@@ -114,6 +115,7 @@ CREATE TABLE `transactions` (
   `created_by` VARCHAR(128) NOT NULL COMMENT '操作员 Auth UID',
   PRIMARY KEY (`id`),
   FOREIGN KEY (`pool_id`) REFERENCES `pools` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`related_pool_id`) REFERENCES `pools` (`id`) ON DELETE SET NULL,
   FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE SET NULL,
   FOREIGN KEY (`investor_id`) REFERENCES `investors` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

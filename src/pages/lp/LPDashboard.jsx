@@ -159,7 +159,7 @@ export function LPDashboard({ user }) {
       </div>
 
       {/* 参股池明细表 */}
-      <div className="glass-card" style={{ padding: "24px" }}>
+      <div className="glass-card no-hover" style={{ padding: "24px" }}>
         <h3 style={styles.sectionTitle}>我参股的资金池明细 (含多层级折算)</h3>
         <div style={{ marginTop: "20px" }}>
           <DataTable 

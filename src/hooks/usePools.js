@@ -51,7 +51,7 @@ export function usePools() {
       );
 
       // 4. 获取作为母池，对外投资的子池 (pool_investments -> child_pools)
-      const childInvestments = await querySQL(
+      let childInvestments = await querySQL(
         `SELECT pi.*, p.name AS child_pool_name 
          FROM pool_investments pi 
          JOIN pools p ON pi.child_pool_id = p.id 
@@ -60,13 +60,43 @@ export function usePools() {
       );
 
       // 5. 获取作为子池，接受哪些母池的投资 (pool_investments -> parent_pools)
-      const parentInvestments = await querySQL(
+      let parentInvestments = await querySQL(
         `SELECT pi.*, p.name AS parent_pool_name 
          FROM pool_investments pi 
          JOIN pools p ON pi.parent_pool_id = p.id 
          WHERE pi.child_pool_id = ?`,
          [poolId]
       );
+
+      // 6. 动态计算层级流水的实际到账和占比
+      const allTxs = await querySQL("select t.*, p.name as pool_name from transactions t join pools p on t.pool_id = p.id left join projects pr on t.project_id = pr.id");
+      
+      const getTotalReceived = (pid) => {
+        return allTxs.filter(t => t.pool_id === pid && t.direction === 'in' && (t.type === 'capital_call' || t.type === 'pool_transfer_in'))
+                     .reduce((sum, t) => sum + Number(t.amount), 0);
+      };
+
+      childInvestments = childInvestments.map(pi => {
+        const childTotal = getTotalReceived(pi.child_pool_id);
+        const actualInvested = allTxs.filter(t => t.pool_id === pi.child_pool_id && t.type === 'pool_transfer_in' && t.related_pool_id === pi.parent_pool_id)
+                                     .reduce((sum, t) => sum + Number(t.amount), 0);
+        return {
+          ...pi,
+          actual_invested_amount: actualInvested,
+          dynamic_share_pct: childTotal > 0 ? (actualInvested / childTotal * 100) : 0
+        };
+      });
+
+      parentInvestments = parentInvestments.map(pi => {
+        const myTotal = getTotalReceived(poolId);
+        const actualReceived = allTxs.filter(t => t.pool_id === poolId && t.type === 'pool_transfer_in' && t.related_pool_id === pi.parent_pool_id)
+                                     .reduce((sum, t) => sum + Number(t.amount), 0);
+        return {
+          ...pi,
+          actual_invested_amount: actualReceived,
+          dynamic_share_pct: myTotal > 0 ? (actualReceived / myTotal * 100) : 0
+        };
+      });
 
       return {
         pool,
@@ -85,10 +115,10 @@ export function usePools() {
    * 创建新的资金池
    */
   const createPool = async (pool) => {
-    const id = `pool-${Date.now()}`;
+    const id = pool.id || `pool-${Date.now()}`;
     const sql = `
-      INSERT INTO pools (id, name, description, total_committed, available_balance, type, start_date, end_date, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO pools (id, name, description, total_committed, available_balance, type, start_date, end_date, created_by, contract_no)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const params = [
       id,
@@ -99,7 +129,8 @@ export function usePools() {
       pool.type || "capital",
       pool.startDate || null,
       pool.endDate || null,
-      pool.createdBy || "admin"
+      pool.createdBy || "admin",
+      pool.contractNo || ""
     ];
     await querySQL(sql, params);
     await fetchPools();
@@ -126,6 +157,55 @@ export function usePools() {
     await querySQL(sql, params);
   };
 
+  /**
+   * 更新资金池基本信息（不含 available_balance，余额只通过流水变化）
+   */
+  const updatePool = async (poolId, updates) => {
+    const sql = `
+      UPDATE pools
+      SET name = ?, description = ?, total_committed = ?, type = ?, start_date = ?, end_date = ?, contract_no = ?, status = ?
+      WHERE id = ?
+    `;
+    const params = [
+      updates.name,
+      updates.description || "",
+      updates.totalCommitted,
+      updates.type,
+      updates.startDate || null,
+      updates.endDate || null,
+      updates.contractNo || "",
+      updates.status || "active",
+      poolId
+    ];
+    await querySQL(sql, params);
+    await fetchPools();
+  };
+
+  /**
+   * 添加直接出资人到资金池（个人/机构 LP → pool_members）
+   * 持股比例由实缴流水自动计算，不在此处存储
+   */
+  const addPoolMember = async ({ poolId, investorId, committedAmount }) => {
+    const id = `pm-${Date.now()}`;
+    const sql = `
+      INSERT INTO pool_members (id, pool_id, investor_id, committed_amount, called_amount, share_pct, status)
+      VALUES (?, ?, ?, ?, 0, 0, 'active')
+    `;
+    await querySQL(sql, [id, poolId, investorId, committedAmount]);
+  };
+
+  /**
+   * 更新直接出资人的认缴参考金额（持股比例由实缴数据自动计算，不存储）
+   */
+  const updatePoolMember = async (poolId, investorId, { committedAmount }) => {
+    const sql = `
+      UPDATE pool_members
+      SET committed_amount = ?
+      WHERE pool_id = ? AND investor_id = ?
+    `;
+    await querySQL(sql, [committedAmount, poolId, investorId]);
+  };
+
   return {
     pools,
     loading,
@@ -133,7 +213,10 @@ export function usePools() {
     fetchPools,
     getPoolDetail,
     createPool,
-    addPoolInvestment
+    addPoolInvestment,
+    addPoolMember,
+    updatePool,
+    updatePoolMember
   };
 }
 export default usePools;

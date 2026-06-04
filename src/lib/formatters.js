@@ -2,15 +2,16 @@
  * 格式化金额为千分位人民币字符串
  * @param {number} amount 金额
  * @param {boolean} showUnit 是否显示元/万元单位
+ * @param {boolean} useWanIfLarge 是否在大数值时使用万元单位
  * @returns {string}
  */
-export function formatCNY(amount, showUnit = true) {
+export function formatCNY(amount, showUnit = true, useWanIfLarge = true) {
   if (amount === undefined || amount === null || isNaN(amount)) {
     return "¥0.00";
   }
 
   // 如果金额很大，提供“万元”转换逻辑
-  if (Math.abs(amount) >= 10000 && !showUnit) {
+  if (Math.abs(amount) >= 10000 && !showUnit && useWanIfLarge) {
     const wan = amount / 10000;
     return `¥${wan.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}万`;
   }

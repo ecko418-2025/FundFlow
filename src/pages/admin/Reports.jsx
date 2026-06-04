@@ -76,7 +76,7 @@ export function Reports() {
         </button>
       </div>
 
-      <div className="glass-card" style={{ padding: "20px" }}>
+      <div className="glass-card no-hover" style={{ padding: "20px" }}>
         <DataTable 
           headers={headers} 
           data={reportData} 

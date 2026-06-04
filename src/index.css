@@ -88,6 +88,19 @@ body {
   border-color: rgba(37, 99, 235, 0.3);
 }
 
+/* 静态卡片：禁止整体卡片悬浮与发光，专用于包含交互表格的容器 */
+.glass-card.no-hover:hover {
+  transform: none;
+  box-shadow: var(--shadow-lg);
+  border-color: var(--glass-border);
+}
+
+.glass-card:has(table):hover {
+  transform: none;
+  box-shadow: var(--shadow-lg);
+  border-color: var(--glass-border);
+}
+
 /* 按钮微动效 */
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-blue) 0%, #1D4ED8 100%);
@@ -193,7 +206,7 @@ body {
 }
 
 .data-table tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(37, 99, 235, 0.08) !important; /* 高端半透明品牌蓝高亮 */
 }
 
 /* 表单录入项 */
@@ -218,6 +231,22 @@ body {
   border-radius: 8px;
   font-size: 0.95rem;
   transition: all 0.2s ease;
+}
+
+/* 日期输入提升可读性 */
+.form-input[type="date"] {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+/* 日期选择按钮（日历图标）改为白色，提升可见性 */
+.form-input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+/* Firefox support (may require -moz- prefix) */
+.form-input[type="date"]::-moz-calendar-picker-indicator {
+  filter: invert(1);
 }
 
 .form-input:focus {
@@ -247,4 +276,35 @@ body {
   font-weight: 600;
   color: var(--text-primary);
   margin-top: 6px;
+}
+
+/* 搜索框 */
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 10px 16px 10px 38px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px var(--accent-blue-glow);
 }

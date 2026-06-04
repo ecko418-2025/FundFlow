@@ -7,12 +7,12 @@ import { AmountInput } from "../../components/ui/AmountInput";
 import { Badge } from "../../components/ui/Badge";
 import { formatCNY, formatDate } from "../../lib/formatters";
 import { useNavigate } from "react-router-dom";
-import { Plus, Briefcase, Download, Upload, FileSpreadsheet, Eye } from "lucide-react";
+import { Plus, Briefcase, Download, Upload, FileSpreadsheet, Eye, Pencil, Search } from "lucide-react";
 import { exportToExcel, importFromExcel, downloadTemplate } from "../../lib/excel";
 
 const EXPORT_HEADERS_MAP = {
   name: "项目名称",
-  code: "项目唯一编号",
+  id: "项目 ID",
   pool_name: "出资来源池名称",
   committed_amount: "计划出资规模",
   status: "立项阶段",
@@ -24,7 +24,7 @@ const EXPORT_HEADERS_MAP = {
 
 const IMPORT_HEADERS_MAP = {
   "项目名称": "name",
-  "项目唯一编号": "code",
+  "项目 ID": "id",
   "出资来源池名称": "pool_name",
   "计划出资规模": "committed_amount",
   "立项阶段": "status",
@@ -41,16 +41,71 @@ export function Projects() {
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // 新增项目表单状态
-  const [poolId, setPoolId] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
+  const [contractNo, setContractNo] = useState("");
   const [status, setStatus] = useState("pre");
   const [committedAmount, setCommittedAmount] = useState("");
   const [description, setDescription] = useState("");
   const [tagsInput, setTagsInput] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // 编辑项目完整状态
+  const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [editProjId, setEditProjId] = useState("");
+  const [editProjName, setEditProjName] = useState("");
+  const [editProjContractNo, setEditProjContractNo] = useState("");
+  const [editProjStatus, setEditProjStatus] = useState("pre");
+  const [editProjCommitted, setEditProjCommitted] = useState("");
+  const [editProjDesc, setEditProjDesc] = useState("");
+  const [editProjTags, setEditProjTags] = useState("");
+  const [editProjStartDate, setEditProjStartDate] = useState("");
+  const [editProjEndDate, setEditProjEndDate] = useState("");
+
+  const [filterTag, setFilterTag] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [startDateFrom, setStartDateFrom] = useState("");
+  const [startDateTo, setStartDateTo] = useState("");
+
+  const [systemTags, setSystemTags] = useState([]);
+
+  const filteredProjects = React.useMemo(() => {
+    let result = projects;
+
+    if (searchKeyword) {
+      const keyword = searchKeyword.toLowerCase();
+      result = result.filter(p => p.name.toLowerCase().includes(keyword) || p.id.toLowerCase().includes(keyword));
+    }
+
+    if (filterStatus) {
+      result = result.filter(p => p.status === filterStatus);
+    }
+
+    if (startDateFrom) {
+      result = result.filter(p => p.start_date && p.start_date >= startDateFrom);
+    }
+
+    if (startDateTo) {
+      result = result.filter(p => p.start_date && p.start_date <= startDateTo);
+    }
+
+    if (filterTag) {
+      result = result.filter(p => {
+        if (!p.tags) return false;
+        try {
+          const parsed = typeof p.tags === "string" ? JSON.parse(p.tags) : p.tags;
+          if (Array.isArray(parsed)) {
+            return parsed.includes(filterTag);
+          }
+        } catch(e) {}
+        return false;
+      });
+    }
+
+    return result;
+  }, [projects, searchKeyword, filterStatus, startDateFrom, startDateTo, filterTag]);
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -58,10 +113,34 @@ export function Projects() {
       const data = await querySQL(`
         SELECT pr.*, p.name AS pool_name 
         FROM projects pr
-        JOIN pools p ON pr.pool_id = p.id
+        LEFT JOIN pools p ON pr.pool_id = p.id
         ORDER BY pr.created_at DESC
       `);
-      setProjects(data);
+
+      const invData = await querySQL(`
+        SELECT pi.project_id, i.name 
+        FROM project_investors pi 
+        JOIN investors i ON pi.investor_id = i.id
+      `);
+
+      const invMap = {};
+      invData.forEach(inv => {
+        if (!invMap[inv.project_id]) invMap[inv.project_id] = [];
+        invMap[inv.project_id].push(inv.investor_name || inv.name);
+      });
+
+      const settingsData = await querySQL(`SELECT * FROM settings`);
+      const tagsSetting = settingsData.find(s => s.key === "system_tags");
+      if (tagsSetting) {
+        setSystemTags(JSON.parse(tagsSetting.value));
+      }
+
+      const processedData = data.map(p => ({
+        ...p,
+        investors: invMap[p.id] || []
+      }));
+
+      setProjects(processedData);
     } catch (err) {
       console.error("加载项目列表失败", err);
     } finally {
@@ -73,9 +152,23 @@ export function Projects() {
     fetchProjects();
   }, []);
 
+  const handleOpenNewProject = () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    let newId = "";
+    let attempts = 0;
+    do {
+      const random3 = Math.floor(100 + Math.random() * 900);
+      newId = `Pro-${dateStr}-${random3}`;
+      attempts++;
+    } while (projects.some(p => p.id === newId) && attempts < 100);
+    
+    setProjectId(newId);
+    setIsModalOpen(true);
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!poolId || !name || !code || !committedAmount || !startDate || !endDate) {
+    if (!name || !projectId || !committedAmount || !startDate || !endDate) {
       alert("请填写全部必填项");
       return;
     }
@@ -86,31 +179,31 @@ export function Projects() {
     }
 
     try {
-      const projId = `proj-${Date.now()}`;
       const sql = `
         INSERT INTO projects (
-          id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags, start_date, expected_end_date
-        ) VALUES (?, ?, ?, ?, ?, ?, 0.00, 0.00, ?, ?, ?, ?)
+          id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags, start_date, expected_end_date, contract_no
+        ) VALUES (?, ?, ?, ?, ?, ?, 0.00, 0.00, ?, ?, ?, ?, ?)
       `;
       
       const tags = tagsInput ? JSON.stringify(tagsInput.split(",").map(t => t.trim())) : JSON.stringify([]);
 
       await querySQL(sql, [
-        projId,
-        poolId,
+        projectId,
+        null,
         name,
-        code,
+        projectId, // also store as code for backward compatibility
         status,
         Number(committedAmount),
         description,
         tags,
         startDate,
-        endDate
+        endDate,
+        contractNo || ""
       ]);
 
-      setPoolId("");
+      setProjectId("");
       setName("");
-      setCode("");
+      setContractNo("");
       setStatus("pre");
       setCommittedAmount("");
       setDescription("");
@@ -122,6 +215,67 @@ export function Projects() {
       alert("新投资组合项目立项登记成功！");
     } catch (err) {
       alert("立项登记失败：" + err.message);
+    }
+  };
+
+  const handleOpenEditProject = (row, e) => {
+    e.stopPropagation();
+    setEditingProject(row);
+    setEditProjId(row.id);
+    setEditProjName(row.name);
+    setEditProjContractNo(row.contract_no || "");
+    setEditProjStatus(row.status);
+    setEditProjCommitted(String(row.committed_amount));
+    setEditProjDesc(row.description || "");
+    let tagsStr = "";
+    if (row.tags) {
+      try {
+        const parsed = typeof row.tags === "string" ? JSON.parse(row.tags) : row.tags;
+        tagsStr = Array.isArray(parsed) ? parsed.join(", ") : row.tags.toString();
+      } catch (_) { tagsStr = row.tags.toString(); }
+    }
+    setEditProjTags(tagsStr);
+    setEditProjStartDate(row.start_date ? row.start_date.slice(0, 10) : "");
+    setEditProjEndDate(row.expected_end_date ? row.expected_end_date.slice(0, 10) : "");
+    setIsEditProjectOpen(true);
+  };
+
+  const handleEditProjectSubmit = async (e) => {
+    e.preventDefault();
+    if (!editProjName || !editProjId || !editProjCommitted || !editProjStartDate || !editProjEndDate) {
+      alert("请填写所有必填项");
+      return;
+    }
+    if (editProjStartDate && editProjEndDate && new Date(editProjEndDate) < new Date(editProjStartDate)) {
+      alert("结束日期不能早于起始日期！");
+      return;
+    }
+    try {
+      const tagsArray = editProjTags ? editProjTags.split(/[,，]/).map(t => t.trim()).filter(Boolean) : [];
+      const sql = `
+        UPDATE projects
+        SET name = ?, code = ?, status = ?, committed_amount = ?,
+            description = ?, tags = ?, start_date = ?, expected_end_date = ?, contract_no = ?
+        WHERE id = ?
+      `;
+      await querySQL(sql, [
+        editProjName,
+        editProjId, // update code with id too
+        editProjStatus,
+        Number(editProjCommitted),
+        editProjDesc,
+        JSON.stringify(tagsArray),
+        editProjStartDate || null,
+        editProjEndDate || null,
+        editProjContractNo || "",
+        editingProject.id
+      ]);
+      setIsEditProjectOpen(false);
+      setEditingProject(null);
+      await fetchProjects();
+      alert("项目信息已更新！");
+    } catch (err) {
+      alert("更新失败：" + err.message);
     }
   };
 
@@ -171,15 +325,14 @@ export function Projects() {
 
       rawData.forEach((row, index) => {
         const rowNum = index + 2;
+        const rId = (row.id || "").toString().trim();
         const rName = (row.name || "").toString().trim();
-        const rCode = (row.code || "").toString().trim();
-        const rPoolName = (row.pool_name || "").toString().trim();
-        const rCommitted = Number(row.committed_amount);
+        const rPool = (row.pool_name || "").toString().trim();
+        const rCommitted = Number(row.committed_amount || 0);
         let rStatus = (row.status || "").toString().trim();
         const rTags = (row.tags || "").toString().trim();
         const rDesc = (row.description || "").toString().trim();
 
-        // 校验日期
         let formattedStartDate = "";
         let formattedEndDate = "";
         if (row.start_date) {
@@ -191,16 +344,12 @@ export function Projects() {
           if (!isNaN(d.getTime())) formattedEndDate = d.toISOString().slice(0, 10);
         }
 
+        if (!rId) {
+          errors.push(`第 ${rowNum} 行: 项目 ID 必填`);
+          return;
+        }
         if (!rName) {
           errors.push(`第 ${rowNum} 行: 项目名称必填`);
-          return;
-        }
-        if (!rCode) {
-          errors.push(`第 ${rowNum} 行: 项目唯一编号必填`);
-          return;
-        }
-        if (!rPoolName) {
-          errors.push(`第 ${rowNum} 行: 出资来源池名称必填`);
           return;
         }
         if (isNaN(rCommitted) || rCommitted <= 0) {
@@ -220,20 +369,12 @@ export function Projects() {
           return;
         }
 
-        if (existingCodes.includes(rCode.toLowerCase())) {
-          errors.push(`第 ${rowNum} 行: 项目唯一编号已在系统中存在 (${rCode})`);
+        if (existingIds.includes(rId.toLowerCase())) {
+          errors.push(`第 ${rowNum} 行: 项目 ID 已在系统中存在 (${rId})`);
           return;
         }
 
-        const pool = pools.find(p => p.name.trim() === rPoolName);
-        if (!pool) {
-          errors.push(`第 ${rowNum} 行: 资金池 "${rPoolName}" 在系统中不存在`);
-          return;
-        }
-
-        if (rStatus.includes("投前") || rStatus.toLowerCase().includes("pre")) {
-          rStatus = "pre";
-        } else if (rStatus.includes("存续") || rStatus.toLowerCase().includes("active")) {
+        if (rStatus.includes("存续") || rStatus.toLowerCase().includes("active")) {
           rStatus = "active";
         } else if (rStatus.includes("退出") || rStatus.toLowerCase().includes("exited")) {
           rStatus = "exited";
@@ -242,12 +383,13 @@ export function Projects() {
         }
 
         const tagsArray = rTags ? rTags.split(/[,，]/).map(t => t.trim()).filter(Boolean) : [];
+        const poolObj = pools.find(p => p.name === rPool);
 
         validatedData.push({
+          id: rId,
           name: rName,
-          code: rCode,
-          poolId: pool.id,
-          committedAmount: rCommitted,
+          poolId: poolObj ? poolObj.id : null,
+          committedAmount: rAmt,
           status: rStatus,
           tags: JSON.stringify(tagsArray),
           description: rDesc,
@@ -271,10 +413,7 @@ export function Projects() {
       setLoading(true);
       let successCount = 0;
 
-      for (let i = 0; i < validatedData.length; i++) {
-        const record = validatedData[i];
-        const projId = `proj-${Date.now()}-${i}`;
-
+      for (const record of validatedData) {
         const sql = `
           INSERT INTO projects (
             id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags, start_date, expected_end_date
@@ -282,10 +421,10 @@ export function Projects() {
         `;
 
         await querySQL(sql, [
-          projId,
+          record.id,
           record.poolId,
           record.name,
-          record.code,
+          record.id,
           record.status,
           record.committedAmount,
           record.description,
@@ -308,9 +447,64 @@ export function Projects() {
   };
 
   const headers = [
-    { key: "name", label: "项目名称", render: (v, row) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { key: "code", label: "项目编号", render: (v) => <span className="mono badge badge-active">{v}</span> },
-    { key: "pool_name", label: "出资来源池子" },
+    { 
+      key: "name", 
+      label: "项目名称", 
+      summaryRender: (v) => <span style={{ fontWeight: 600, color: "var(--accent-gold)" }}>{v}</span>,
+      render: (v, row) => {
+        let tags = [];
+        try {
+          tags = typeof row.tags === "string" ? JSON.parse(row.tags) : row.tags;
+        } catch(e) {}
+        return (
+          <div>
+            <span style={{ fontWeight: 600 }}>{v}</span>
+            {Array.isArray(tags) && tags.length > 0 && (
+              <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                {tags.map((t, i) => {
+                  const category = systemTags.find(cat => cat.tags && cat.tags.includes(t));
+                  const color = category ? category.color : "var(--text-secondary)";
+                  const bgColor = category ? `${category.color}20` : "var(--bg-tertiary)";
+                  const borderColor = category ? `${category.color}40` : "var(--border)";
+                  return (
+                    <span 
+                      key={i} 
+                      className="badge" 
+                      style={{ 
+                        fontSize: '0.65rem', 
+                        padding: '2px 6px', 
+                        backgroundColor: bgColor, 
+                        color: color,
+                        border: `1px solid ${borderColor}`,
+                        textTransform: 'none' 
+                      }}
+                    >
+                      {t}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      }
+    },
+    { key: "id", label: "项目 ID", render: (v) => <span className="mono badge badge-active">{v}</span> },
+    { 
+      key: "investors", 
+      label: "出资方", 
+      render: (v, row) => {
+        if (!v || v.length === 0) return <span style={{ color: "var(--text-secondary)" }}>-</span>;
+        if (v.length > 2) {
+          return (
+            <span style={{ color: "var(--accent-blue)" }} title={v.join("，")}>
+              {v.slice(0, 2).join("，")} 等 {v.length} 方
+            </span>
+          );
+        }
+        return <span style={{ color: "var(--accent-blue)" }}>{v.join("，")}</span>;
+      } 
+    },
     { key: "status", label: "立项状态", render: (v) => {
         const labels = { pre: "投前考察", active: "存续管理", exited: "退出清算" };
         return <Badge text={labels[v] || v} status={v} />;
@@ -337,21 +531,31 @@ export function Projects() {
     { 
       key: "id", 
       label: "操作", 
-      align: "right",
-      render: (v) => (
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/admin/projects/${v}`);
-          }}
-          className="btn-secondary"
-          style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
-        >
-          <Eye size={14} />
-          <span>详情明细</span>
-        </button>
+      align: "right", 
+      render: (v, row) => (
+        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+          <button 
+            onClick={(e) => handleOpenEditProject(row, e)}
+            className="btn-secondary"
+            style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
+          >
+            <Pencil size={14} />
+            <span>编辑</span>
+          </button>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/admin/projects/${v}`);
+            }}
+            className="btn-secondary"
+            style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
+          >
+            <Eye size={14} />
+            <span>详情明细</span>
+          </button>
+        </div>
       )
-    }
+    },
   ];
 
   return (
@@ -359,7 +563,7 @@ export function Projects() {
       <div style={styles.pageHeader}>
         <div>
           <h2>投建项目管理</h2>
-          <p>录入实体投资项目组合，关联其所属层级的资金池来源。</p>
+          <p>录入实体投资项目组合，并管理其出资方和收支明细。</p>
         </div>
       </div>
 
@@ -384,23 +588,123 @@ export function Projects() {
             />
           </label>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="btn-primary" style={{ gap: "6px" }}>
+        <button onClick={handleOpenNewProject} className="btn-primary" style={{ gap: "6px" }}>
           <Plus size={18} />
           <span>立项登记</span>
         </button>
       </div>
 
-      <div className="glass-card" style={{ padding: "20px" }}>
-        <DataTable 
-          headers={headers} 
-          data={projects} 
-          emptyMessage={loading ? "加载中..." : "暂无已录入的投资项目"}
-          onRowClick={(row) => navigate(`/admin/projects/${row.id}`)}
-        />
+      <div className="glass-card no-hover" style={{ padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", backgroundColor: "rgba(9, 13, 26, 0.5)" }}>
+        <div className="search-box" style={{ width: "260px" }}>
+          <Search size={16} className="search-icon" />
+          <input 
+            type="text" 
+            placeholder="搜索项目名称 / 项目 ID..." 
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            className="form-input"
+            style={{ paddingLeft: "36px" }}
+          />
+        </div>
+        
+        <select 
+          value={filterStatus} 
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="form-input"
+          style={{ width: "160px" }}
+        >
+          <option value="">全部立项状态</option>
+          <option value="pre">投前考察</option>
+          <option value="active">存续管理</option>
+          <option value="exited">退出清算</option>
+        </select>
+
+        <select 
+          value={filterTag} 
+          onChange={(e) => setFilterTag(e.target.value)}
+          className="form-input"
+          style={{ width: "160px" }}
+        >
+          <option value="">全部标签</option>
+          {systemTags.map(cat => (
+            <optgroup key={cat.id} label={cat.name}>
+              {cat.tags && cat.tags.map(tag => (
+                <option key={tag} value={tag}>{tag}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>起始日期范围：</span>
+          <input 
+            type="date" 
+            value={startDateFrom}
+            onChange={(e) => setStartDateFrom(e.target.value)}
+            className="form-input"
+            style={{ width: "140px" }}
+          />
+          <span style={{ color: 'var(--text-secondary)' }}>至</span>
+          <input 
+            type="date" 
+            value={startDateTo}
+            onChange={(e) => setStartDateTo(e.target.value)}
+            className="form-input"
+            style={{ width: "140px" }}
+          />
+        </div>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="新建投资项目登记 (立项)">
+      <div className="glass-card no-hover" style={{ padding: "20px" }}>
+        {(() => {
+          const totalCommitted = filteredProjects.reduce((sum, p) => sum + (Number(p.committed_amount) || 0), 0);
+          const totalInvested = filteredProjects.reduce((sum, p) => sum + (Number(p.invested_amount) || 0), 0);
+          const totalReturned = filteredProjects.reduce((sum, p) => sum + (Number(p.returned_amount) || 0), 0);
+          const summaryData = {
+            name: "总计汇总",
+            committed_amount: totalCommitted,
+            invested_amount: totalInvested,
+            returned_amount: totalReturned
+          };
+
+          return (
+            <DataTable 
+              headers={headers} 
+              data={filteredProjects} 
+              emptyMessage={loading ? "加载中..." : "暂无符合条件的项目"}
+              onRowClick={(row) => navigate(`/admin/projects/${row.id}`)}
+              summaryData={summaryData}
+            />
+          );
+        })()}
+      </div>
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="新建投资组合项目 (New Portfolio)">
         <form onSubmit={handleCreate} style={styles.form}>
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">项目 ID *</label>
+              <input 
+                type="text" 
+                required
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                placeholder="如：Pro-20240101-123"
+                className="form-input mono"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">相关合同编号</label>
+              <input 
+                type="text" 
+                value={contractNo}
+                onChange={(e) => setContractNo(e.target.value)}
+                placeholder="如：HT-2024-001"
+                className="form-input mono"
+              />
+            </div>
+          </div>
+
           <div className="form-group">
             <label className="form-label">项目名称 *</label>
             <input 
@@ -411,33 +715,6 @@ export function Projects() {
               placeholder="如：高倍率固态锂电池二期研发"
               className="form-input"
             />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">项目唯一编号 *</label>
-            <input 
-              type="text" 
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="如：P-2024-002"
-              className="form-input mono"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">出资方资金池 *</label>
-            <select 
-              value={poolId} 
-              onChange={(e) => setPoolId(e.target.value)}
-              className="form-input"
-              required
-            >
-              <option value="">-- 请选择出资来源池子 --</option>
-              {pools.map(p => (
-                <option key={p.id} value={p.id}>{p.name} (可用: {formatCNY(p.available_balance, false)})</option>
-              ))}
-            </select>
           </div>
 
           <div className="form-group" style={{ display: "flex", gap: "16px" }}>
@@ -487,11 +764,45 @@ export function Projects() {
 
           <div className="form-group">
             <label className="form-label">项目分类标签</label>
+            {systemTags.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+                {systemTags.map(cat => (
+                  <div key={cat.id} style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", minWidth: "80px" }}>{cat.name}:</span>
+                    {cat.tags && cat.tags.map(tag => {
+                      const currentTags = tagsInput.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+                      const isSelected = currentTags.includes(tag);
+                      return (
+                        <span 
+                          key={tag} 
+                          onClick={() => {
+                            if (isSelected) {
+                              setTagsInput(currentTags.filter(t => t !== tag).join(", "));
+                            } else {
+                              setTagsInput([...currentTags, tag].join(", "));
+                            }
+                          }}
+                          className={`badge ${isSelected ? 'badge-active' : ''}`}
+                          style={{ 
+                            cursor: "pointer", 
+                            border: isSelected ? "none" : `1px solid ${cat.color}40`, 
+                            backgroundColor: isSelected ? cat.color : "transparent", 
+                            color: isSelected ? "#fff" : cat.color 
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
             <input 
               type="text" 
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
-              placeholder="标签用逗号隔开，如：固态电池, 新能源, 早期"
+              placeholder="自定义标签用逗号隔开，或者点击上方已有标签快速添加"
               className="form-input"
             />
           </div>
@@ -511,6 +822,113 @@ export function Projects() {
           <div style={styles.modalActions}>
             <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">取消</button>
             <button type="submit" className="btn-primary">确认立项登记</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 弹窗：编辑项目（完整字段） */}
+      <Modal isOpen={isEditProjectOpen} onClose={() => setIsEditProjectOpen(false)} title={`编辑项目：${editingProject?.name || ""}`}>
+        <form onSubmit={handleEditProjectSubmit} style={styles.form}>
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">项目 ID</label>
+              <input 
+                type="text" 
+                disabled
+                value={editProjId}
+                className="form-input mono"
+                style={{ backgroundColor: "var(--background)", cursor: "not-allowed" }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">相关合同编号</label>
+              <input 
+                type="text" 
+                value={editProjContractNo}
+                onChange={(e) => setEditProjContractNo(e.target.value)}
+                placeholder="如：HT-2024-001"
+                className="form-input mono"
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">项目名称 *</label>
+            <input type="text" required value={editProjName} onChange={(e) => setEditProjName(e.target.value)} className="form-input" />
+          </div>
+
+          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">运行起始日期</label>
+              <input type="date" value={editProjStartDate} onChange={(e) => setEditProjStartDate(e.target.value)} className="form-input mono" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">预计结束日期</label>
+              <input type="date" value={editProjEndDate} onChange={(e) => setEditProjEndDate(e.target.value)} className="form-input mono" />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">计划出资规模 *</label>
+            <AmountInput value={editProjCommitted} onChange={setEditProjCommitted} placeholder="请输入计划出资额（元）" />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">立项阶段 *</label>
+            <select value={editProjStatus} onChange={(e) => setEditProjStatus(e.target.value)} className="form-input">
+              <option value="pre">投前储备阶段 (Pre-investment)</option>
+              <option value="active">存续运营阶段 (Active Portfolio)</option>
+              <option value="exited">完全退出阶段 (Exited)</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">项目分类标签</label>
+            {systemTags.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+                {systemTags.map(cat => (
+                  <div key={cat.id} style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", minWidth: "80px" }}>{cat.name}:</span>
+                    {cat.tags && cat.tags.map(tag => {
+                      const currentTags = editProjTags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+                      const isSelected = currentTags.includes(tag);
+                      return (
+                        <span 
+                          key={tag} 
+                          onClick={() => {
+                            if (isSelected) {
+                              setEditProjTags(currentTags.filter(t => t !== tag).join(", "));
+                            } else {
+                              setEditProjTags([...currentTags, tag].join(", "));
+                            }
+                          }}
+                          className={`badge ${isSelected ? 'badge-active' : ''}`}
+                          style={{ 
+                            cursor: "pointer", 
+                            border: isSelected ? "none" : `1px solid ${cat.color}40`, 
+                            backgroundColor: isSelected ? cat.color : "transparent", 
+                            color: isSelected ? "#fff" : cat.color 
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+            <input type="text" value={editProjTags} onChange={(e) => setEditProjTags(e.target.value)} placeholder="自定义标签用逗号隔开，或者点击上方已有标签快速添加" className="form-input" />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">项目详情描述</label>
+            <textarea value={editProjDesc} onChange={(e) => setEditProjDesc(e.target.value)} className="form-input" rows={3} style={{ resize: "none" }} />
+          </div>
+
+          <div style={styles.modalActions}>
+            <button type="button" onClick={() => setIsEditProjectOpen(false)} className="btn-secondary">取消</button>
+            <button type="submit" className="btn-primary">保存修改</button>
           </div>
         </form>
       </Modal>

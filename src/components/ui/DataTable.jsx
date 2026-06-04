@@ -1,9 +1,9 @@
 import React from "react";
 
-export function DataTable({ headers = [], data = [], emptyMessage = "暂无相关数据", onRowClick = null }) {
+export function DataTable({ headers = [], data = [], emptyMessage = "暂无相关数据", onRowClick = null, summaryData = null }) {
   return (
     <div style={styles.container}>
-      <table style={styles.table}>
+      <table className="data-table" style={styles.table}>
         <thead>
           <tr>
             {headers.map((h, i) => (
@@ -55,6 +55,28 @@ export function DataTable({ headers = [], data = [], emptyMessage = "暂无相�
             ))
           )}
         </tbody>
+        {summaryData && data.length > 0 && (
+          <tfoot>
+            <tr style={styles.summaryTr}>
+              {headers.map((h, colIndex) => {
+                const val = summaryData[h.key];
+                return (
+                  <td 
+                    key={colIndex} 
+                    style={{ 
+                      ...styles.summaryTd, 
+                      textAlign: h.align || "left" 
+                    }}
+                  >
+                    {val !== undefined 
+                      ? (h.summaryRender ? h.summaryRender(val, summaryData) : (h.render ? h.render(val, summaryData) : val)) 
+                      : ""}
+                  </td>
+                );
+              })}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );
@@ -97,6 +119,16 @@ const styles = {
     textAlign: "center",
     color: "var(--text-secondary)",
     fontSize: "0.85rem"
+  },
+  summaryTr: {
+    backgroundColor: "rgba(9, 13, 26, 0.7)",
+    borderTop: "2px solid var(--border)",
+  },
+  summaryTd: {
+    padding: "16px",
+    color: "var(--text-primary)",
+    fontWeight: "700",
+    verticalAlign: "middle",
   }
 };
 export default DataTable;
