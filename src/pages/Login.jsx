@@ -30,7 +30,7 @@ export function Login() {
   const handleQuickLogin = (mockEmail) => {
     // 快捷按钮不再后台登录，而是直接填入“用户名和密码”输入框中，符合用户对显式密码登录的诉求
     setEmail(mockEmail);
-    setPassword("123456");
+    setPassword("Test1234");
   };
 
   return (
