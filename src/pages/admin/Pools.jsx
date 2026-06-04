@@ -51,6 +51,9 @@ export function Pools() {
   const [startDateFrom, setStartDateFrom] = useState("");
   const [startDateTo, setStartDateTo] = useState("");
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
   const filteredPools = React.useMemo(() => {
     let result = pools;
 
@@ -73,6 +76,16 @@ export function Pools() {
 
     return result;
   }, [pools, searchKeyword, filterStatus, startDateFrom, startDateTo]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchKeyword, filterStatus, startDateFrom, startDateTo]);
+
+  const paginatedPools = React.useMemo(() => {
+    return filteredPools.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredPools, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredPools.length / pageSize);
 
   const handleOpenNewPool = () => {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -325,10 +338,57 @@ export function Pools() {
       <div className="glass-card no-hover" style={{ padding: "20px" }}>
         <DataTable 
           headers={headers} 
-          data={filteredPools} 
+          data={paginatedPools} 
           emptyMessage={loading ? "加载中..." : "暂无符合条件的资金池"}
           onRowClick={(row) => navigate(`/admin/pools/${row.id}`)}
         />
+
+        {/* 分页控制栏 */}
+        <div style={styles.paginationRow}>
+          <div style={styles.paginationLeft}>
+            <span>每页显示：</span>
+            <select 
+              value={pageSize} 
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="form-input"
+              style={styles.pageSizeSelect}
+            >
+              <option value={10}>10 条</option>
+              <option value={20}>20 条</option>
+              <option value={50}>50 条</option>
+            </select>
+            <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
+              共 {filteredPools.length} 条记录
+            </span>
+          </div>
+          
+          {totalPages > 1 && (
+            <div style={styles.paginationRight}>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="btn-secondary"
+                style={styles.pageBtn}
+              >
+                上一页
+              </button>
+              <span style={styles.pageIndicator}>
+                第 {currentPage} / {totalPages} 页
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="btn-secondary"
+                style={styles.pageBtn}
+              >
+                下一页
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 弹窗 1：创建资金池 */}
@@ -672,6 +732,50 @@ const styles = {
     fontSize: "0.75rem",
     color: "var(--text-secondary)",
     marginTop: "6px"
+  },
+  paginationRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "20px",
+    paddingTop: "16px",
+    borderTop: "1px solid var(--border)"
+  },
+  paginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.85rem"
+  },
+  pageSizeSelect: {
+    padding: "4px 8px",
+    fontSize: "0.85rem",
+    width: "90px",
+    height: "32px",
+    borderRadius: "4px",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  paginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  pageBtn: {
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    borderRadius: "4px",
+    cursor: "pointer",
+    height: "32px",
+    display: "flex",
+    alignItems: "center"
+  },
+  pageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    fontWeight: "500"
   }
 };
 export default Pools;

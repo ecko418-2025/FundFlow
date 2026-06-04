@@ -31,6 +31,19 @@ export function Investors() {
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const paginatedInvestors = React.useMemo(() => {
+    return investors.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [investors, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(investors.length / pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [investors.length]);
+
   // 新增出资方表单状态
   const [name, setName] = useState("");
   const [type, setType] = useState("individual");
@@ -387,90 +400,144 @@ export function Investors() {
       <div className="glass-card no-hover" style={{ padding: "20px" }}>
         <DataTable 
           headers={headers} 
-          data={investors} 
+          data={paginatedInvestors} 
           emptyMessage={loading ? "加载中..." : "暂无已登记的出资方"}
         />
+
+        {/* 分页控制栏 */}
+        <div style={styles.paginationRow}>
+          <div style={styles.paginationLeft}>
+            <span>每页显示：</span>
+            <select 
+              value={pageSize} 
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="form-input"
+              style={styles.pageSizeSelect}
+            >
+              <option value={10}>10 条</option>
+              <option value={20}>20 条</option>
+              <option value={50}>50 条</option>
+            </select>
+            <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
+              共 {investors.length} 条记录
+            </span>
+          </div>
+          
+          {totalPages > 1 && (
+            <div style={styles.paginationRight}>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="btn-secondary"
+                style={styles.pageBtn}
+              >
+                上一页
+              </button>
+              <span style={styles.pageIndicator}>
+                第 {currentPage} / {totalPages} 页
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="btn-secondary"
+                style={styles.pageBtn}
+              >
+                下一页
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="录入出资方信息">
         <form onSubmit={handleCreate} style={styles.form}>
-          <div className="form-group">
-            <label className="form-label">出资方名称 *</label>
-            <input 
-              type="text" 
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="如：张三 或 招商局母基金二期"
-              className="form-input"
-            />
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">出资方名称 *</label>
+              <input 
+                type="text" 
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如：张三 或 招商局母基金二期"
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">投资者性质 *</label>
+              <select 
+                value={type} 
+                onChange={(e) => setType(e.target.value)}
+                className="form-input"
+                style={{ height: "42px" }}
+              >
+                <option value="individual">个人投资者 (Individual)</option>
+                <option value="fund">机构基金/母基金 (Fund)</option>
+              </select>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">投资者性质 *</label>
-            <select 
-              value={type} 
-              onChange={(e) => setType(e.target.value)}
-              className="form-input"
-            >
-              <option value="individual">个人投资者 (Individual)</option>
-              <option value="fund">机构基金/母基金 (Fund)</option>
-            </select>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">对账/登录邮箱 *</label>
+              <input 
+                type="email" 
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="如：zhangsan@example.com"
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">云开发 Auth UID (选填)</label>
+              <input 
+                type="text" 
+                value={cloudbaseUid}
+                onChange={(e) => setCloudbaseUid(e.target.value)}
+                placeholder="云开发控制台 UID，不填则自动生成演示 Mock UID"
+                className="form-input"
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">对账/登录邮箱 *</label>
-            <input 
-              type="email" 
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="如：zhangsan@example.com (将以此邮箱作为对账单接收账户)"
-              className="form-input"
-            />
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">联系电话</label>
+              <input 
+                type="text" 
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="如：13800000000"
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">核心对接人姓名</label>
+              <input 
+                type="text" 
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                placeholder="机构出资人必须填写"
+                className="form-input"
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">云开发 Auth UID (选填)</label>
-            <input 
-              type="text" 
-              value={cloudbaseUid}
-              onChange={(e) => setCloudbaseUid(e.target.value)}
-              placeholder="云开发控制台生成的 UID，不填则自动生成演示 Mock UID"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">联系电话</label>
-            <input 
-              type="text" 
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="如：13800000000"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">核心对接人姓名</label>
-            <input 
-              type="text" 
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-              placeholder="机构出资人必须填写"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: "12px" }}>
             <label className="form-label">出资人备注说明</label>
             <textarea 
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="补充资产归属、特殊分成协议等"
               className="form-input"
-              rows={3}
+              rows={2}
               style={{ resize: "none" }}
             />
           </div>
@@ -484,83 +551,90 @@ export function Investors() {
 
       <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditingInvestor(null); }} title="编辑出资方信息 & 绑定 UID">
         <form onSubmit={handleUpdate} style={styles.form}>
-          <div className="form-group">
-            <label className="form-label">出资方名称 *</label>
-            <input 
-              type="text" 
-              required
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="如：张三 或 招商局母基金二期"
-              className="form-input"
-            />
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">出资方名称 *</label>
+              <input 
+                type="text" 
+                required
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="如：张三 或 招商局母基金二期"
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">投资者性质 *</label>
+              <select 
+                value={editType} 
+                onChange={(e) => setEditType(e.target.value)}
+                className="form-input"
+                style={{ height: "42px" }}
+              >
+                <option value="individual">个人投资者 (Individual)</option>
+                <option value="fund">机构基金/母基金 (Fund)</option>
+              </select>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">投资者性质 *</label>
-            <select 
-              value={editType} 
-              onChange={(e) => setEditType(e.target.value)}
-              className="form-input"
-            >
-              <option value="individual">个人投资者 (Individual)</option>
-              <option value="fund">机构基金/母基金 (Fund)</option>
-            </select>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">对账/登录邮箱 *</label>
+              <input 
+                type="email" 
+                required
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="如：zhangsan@example.com"
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">云开发 Auth UID (选填)</label>
+              <input 
+                type="text" 
+                value={editUid}
+                onChange={(e) => setEditUid(e.target.value)}
+                placeholder="绑定腾讯云开发的 Auth UID (W-xYz...)"
+                className="form-input"
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">对账/登录邮箱 *</label>
-            <input 
-              type="email" 
-              required
-              value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
-              placeholder="如：zhangsan@example.com"
-              className="form-input"
-            />
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">联系电话</label>
+              <input 
+                type="text" 
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="如：13800000000"
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">核心对接人姓名</label>
+              <input 
+                type="text" 
+                value={editContact}
+                onChange={(e) => setEditContact(e.target.value)}
+                placeholder="主要联系人"
+                className="form-input"
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">云开发 Auth UID (选填)</label>
-            <input 
-              type="text" 
-              value={editUid}
-              onChange={(e) => setEditUid(e.target.value)}
-              placeholder="绑定腾讯云开发的 Auth UID (W-xYz...)"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">联系电话</label>
-            <input 
-              type="text" 
-              value={editPhone}
-              onChange={(e) => setEditPhone(e.target.value)}
-              placeholder="如：13800000000"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">核心对接人姓名</label>
-            <input 
-              type="text" 
-              value={editContact}
-              onChange={(e) => setEditContact(e.target.value)}
-              placeholder="主要联系人"
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: "12px" }}>
             <label className="form-label">出资人备注说明</label>
             <textarea 
               value={editNote}
               onChange={(e) => setEditNote(e.target.value)}
               placeholder="补充说明"
               className="form-input"
-              rows={3}
+              rows={2}
               style={{ resize: "none" }}
             />
           </div>
@@ -607,6 +681,50 @@ const styles = {
     marginTop: "16px",
     borderTop: "1px solid var(--border)",
     paddingTop: "16px"
+  },
+  paginationRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "20px",
+    paddingTop: "16px",
+    borderTop: "1px solid var(--border)"
+  },
+  paginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.85rem"
+  },
+  pageSizeSelect: {
+    padding: "4px 8px",
+    fontSize: "0.85rem",
+    width: "90px",
+    height: "32px",
+    borderRadius: "4px",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  paginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  pageBtn: {
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    borderRadius: "4px",
+    cursor: "pointer",
+    height: "32px",
+    display: "flex",
+    alignItems: "center"
+  },
+  pageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    fontWeight: "500"
   }
 };
 export default Investors;

@@ -107,6 +107,19 @@ export function Projects() {
     return result;
   }, [projects, searchKeyword, filterStatus, startDateFrom, startDateTo, filterTag]);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchKeyword, filterStatus, startDateFrom, startDateTo, filterTag]);
+
+  const paginatedProjects = React.useMemo(() => {
+    return filteredProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredProjects, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredProjects.length / pageSize);
+
   const fetchProjects = async () => {
     setLoading(true);
     try {
@@ -668,21 +681,70 @@ export function Projects() {
           };
 
           return (
-            <DataTable 
-              headers={headers} 
-              data={filteredProjects} 
-              emptyMessage={loading ? "加载中..." : "暂无符合条件的项目"}
-              onRowClick={(row) => navigate(`/admin/projects/${row.id}`)}
-              summaryData={summaryData}
-            />
+            <>
+              <DataTable 
+                headers={headers} 
+                data={paginatedProjects} 
+                emptyMessage={loading ? "加载中..." : "暂无符合条件的项目"}
+                onRowClick={(row) => navigate(`/admin/projects/${row.id}`)}
+                summaryData={summaryData}
+              />
+
+              {/* 分页控制栏 */}
+              <div style={styles.paginationRow}>
+                <div style={styles.paginationLeft}>
+                  <span>每页显示：</span>
+                  <select 
+                    value={pageSize} 
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="form-input"
+                    style={styles.pageSizeSelect}
+                  >
+                    <option value={10}>10 条</option>
+                    <option value={20}>20 条</option>
+                    <option value={50}>50 条</option>
+                  </select>
+                  <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
+                    共 {filteredProjects.length} 条记录
+                  </span>
+                </div>
+                
+                {totalPages > 1 && (
+                  <div style={styles.paginationRight}>
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="btn-secondary"
+                      style={styles.pageBtn}
+                    >
+                      上一页
+                    </button>
+                    <span style={styles.pageIndicator}>
+                      第 {currentPage} / {totalPages} 页
+                    </span>
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="btn-secondary"
+                      style={styles.pageBtn}
+                    >
+                      下一页
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
           );
         })()}
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="新建投资组合项目 (New Portfolio)">
         <form onSubmit={handleCreate} style={styles.form}>
-          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">项目 ID *</label>
               <input 
                 type="text" 
@@ -693,7 +755,7 @@ export function Projects() {
                 className="form-input mono"
               />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">相关合同编号</label>
               <input 
                 type="text" 
@@ -705,20 +767,43 @@ export function Projects() {
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">项目名称 *</label>
-            <input 
-              type="text" 
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="如：高倍率固态锂电池二期研发"
-              className="form-input"
-            />
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 2, marginBottom: "12px" }}>
+              <label className="form-label">项目名称 *</label>
+              <input 
+                type="text" 
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如：高倍率固态锂电池二期研发"
+                className="form-input"
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">立项阶段 *</label>
+              <select 
+                value={status} 
+                onChange={(e) => setStatus(e.target.value)}
+                className="form-input"
+                style={{ height: "42px" }}
+              >
+                <option value="pre">投前储备 (Pre-investment)</option>
+                <option value="active">存续运营 (Active Portfolio)</option>
+                <option value="exited">完全退出 (Exited)</option>
+              </select>
+            </div>
           </div>
 
-          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">计划出资规模 *</label>
+              <AmountInput 
+                value={committedAmount} 
+                onChange={setCommittedAmount}
+                placeholder="计划出资额"
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">运行起始日期 *</label>
               <input 
                 type="date" 
@@ -728,7 +813,7 @@ export function Projects() {
                 className="form-input mono"
               />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">预计结束日期 *</label>
               <input 
                 type="date" 
@@ -740,35 +825,13 @@ export function Projects() {
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">计划出资规模 *</label>
-            <AmountInput 
-              value={committedAmount} 
-              onChange={setCommittedAmount}
-              placeholder="请输入计划出资额（元）"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">立项阶段 *</label>
-            <select 
-              value={status} 
-              onChange={(e) => setStatus(e.target.value)}
-              className="form-input"
-            >
-              <option value="pre">投前储备阶段 (Pre-investment)</option>
-              <option value="active">存续运营阶段 (Active Portfolio)</option>
-              <option value="exited">完全退出阶段 (Exited)</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">项目分类标签</label>
+          <div className="form-group" style={{ marginBottom: "12px" }}>
+            <label className="form-label" style={{ marginBottom: "4px" }}>项目分类标签</label>
             {systemTags.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "6px" }}>
                 {systemTags.map(cat => (
-                  <div key={cat.id} style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", minWidth: "80px" }}>{cat.name}:</span>
+                  <div key={cat.id} style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", fontSize: "0.8rem" }}>
+                    <span style={{ color: "var(--text-secondary)", minWidth: "70px" }}>{cat.name}:</span>
                     {cat.tags && cat.tags.map(tag => {
                       const currentTags = tagsInput.split(/[,，]/).map(t => t.trim()).filter(Boolean);
                       const isSelected = currentTags.includes(tag);
@@ -785,6 +848,8 @@ export function Projects() {
                           className={`badge ${isSelected ? 'badge-active' : ''}`}
                           style={{ 
                             cursor: "pointer", 
+                            fontSize: "0.75rem",
+                            padding: "2px 6px",
                             border: isSelected ? "none" : `1px solid ${cat.color}40`, 
                             backgroundColor: isSelected ? cat.color : "transparent", 
                             color: isSelected ? "#fff" : cat.color 
@@ -804,17 +869,18 @@ export function Projects() {
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder="自定义标签用逗号隔开，或者点击上方已有标签快速添加"
               className="form-input"
+              style={{ height: "36px", fontSize: "0.85rem" }}
             />
           </div>
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: "12px" }}>
             <label className="form-label">项目详情描述</label>
             <textarea 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="详细描述项目主营业务、估值、主要回款约定..."
               className="form-input"
-              rows={3}
+              rows={2}
               style={{ resize: "none" }}
             />
           </div>
@@ -963,11 +1029,56 @@ const styles = {
   },
   modalActions: {
     display: "flex",
+    justifydynamiccontent: "flex-end",
     justifyContent: "flex-end",
     gap: "12px",
     marginTop: "16px",
     borderTop: "1px solid var(--border)",
     paddingTop: "16px"
+  },
+  paginationRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "20px",
+    paddingTop: "16px",
+    borderTop: "1px solid var(--border)"
+  },
+  paginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.85rem"
+  },
+  pageSizeSelect: {
+    padding: "4px 8px",
+    fontSize: "0.85rem",
+    width: "90px",
+    height: "32px",
+    borderRadius: "4px",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  paginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  pageBtn: {
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    borderRadius: "4px",
+    cursor: "pointer",
+    height: "32px",
+    display: "flex",
+    alignItems: "center"
+  },
+  pageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    fontWeight: "500"
   }
 };
 export default Projects;

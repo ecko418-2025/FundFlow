@@ -7,7 +7,7 @@ import { Modal } from "../../components/ui/Modal";
 import { AmountInput } from "../../components/ui/AmountInput";
 import { Badge } from "../../components/ui/Badge";
 import { formatCNY, formatDate } from "../../lib/formatters";
-import { Plus, DollarSign, Download, Upload, FileSpreadsheet, Trash2 } from "lucide-react";
+import { Plus, DollarSign, Download, Upload, FileSpreadsheet, Trash2, Search } from "lucide-react";
 import { exportToExcel, importFromExcel, downloadTemplate } from "../../lib/excel";
 
 const EXPORT_HEADERS_MAP = {
@@ -39,6 +39,75 @@ export function Transactions() {
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const getSourceName = (row) => {
+    if (row.type === "capital_call") return row.investor_name || "";
+    if (row.type === "investment") return row.investor_name || row.pool_name || "";
+    if (row.type === "return" || row.type === "distribution") return row.project_name || "";
+    if (row.type === "pool_transfer_out") return row.pool_name || "";
+    if (row.type === "pool_transfer_in") return row.related_pool_name || "";
+    return row.direction === "in" ? "外部来源" : (row.pool_name || "");
+  };
+
+  const getTargetName = (row) => {
+    if (row.type === "capital_call") return row.pool_name || "";
+    if (row.type === "investment") return row.project_name || "";
+    if (row.type === "return" || row.type === "distribution") return row.investor_name || row.pool_name || "";
+    if (row.type === "pool_transfer_out") return row.related_pool_name || "";
+    if (row.type === "pool_transfer_in") return row.pool_name || "";
+    return row.direction === "in" ? (row.pool_name || "") : "外部去向";
+  };
+
+  const filteredTxs = React.useMemo(() => {
+    let result = txs;
+
+    if (searchKeyword) {
+      const keyword = searchKeyword.toLowerCase();
+      result = result.filter(t => {
+        const refNo = (t.reference_no || "").toLowerCase();
+        const desc = (t.description || "").toLowerCase();
+        const sourceName = getSourceName(t).toLowerCase();
+        const targetName = getTargetName(t).toLowerCase();
+        return refNo.includes(keyword) || 
+               desc.includes(keyword) || 
+               sourceName.includes(keyword) || 
+               targetName.includes(keyword);
+      });
+    }
+
+    if (filterType) {
+      result = result.filter(t => t.type === filterType);
+    }
+
+    if (dateFrom) {
+      result = result.filter(t => t.date && t.date >= dateFrom);
+    }
+
+    if (dateTo) {
+      result = result.filter(t => t.date && t.date <= dateTo);
+    }
+
+    return result;
+  }, [txs, searchKeyword, filterType, dateFrom, dateTo]);
+
+  const paginatedTxs = React.useMemo(() => {
+    return filteredTxs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredTxs, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredTxs.length / pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchKeyword, filterType, dateFrom, dateTo, txs.length]);
+
   
   // 用于下拉关联的动态数据
   const [investors, setInvestors] = useState([]);
@@ -60,6 +129,24 @@ export function Transactions() {
   // 新的一进一出关联实体状态
   const [sourceEntity, setSourceEntity] = useState(""); 
   const [targetEntity, setTargetEntity] = useState("");
+
+  const [customType, setCustomType] = useState("capital_call");
+
+  useEffect(() => {
+    if (txTab === "pool_in") {
+      if (sourceEntity.startsWith('pool:')) {
+        setCustomType("pool_transfer_in");
+      } else {
+        setCustomType("capital_call");
+      }
+    } else if (txTab === "invest_out") {
+      setCustomType("investment");
+    } else if (txTab === "project_return") {
+      setCustomType("return");
+    } else if (txTab === "pool_liquidation") {
+      setCustomType("return");
+    }
+  }, [txTab, sourceEntity, targetEntity]);
 
   const fetchTxs = async () => {
     setLoading(true);
@@ -118,8 +205,11 @@ export function Transactions() {
       capital_call: "in",
       investment: "out",
       return: "in",
+      distribution: "out",
+      fee: "out",
       pool_transfer_out: "out",
-      pool_transfer_in: "in"
+      pool_transfer_in: "in",
+      adjustment: "in"
     };
     return map[t] || "in";
   };
@@ -244,13 +334,14 @@ export function Transactions() {
     // =====================================
 
     try {
-      const direction = getDirectionByType(resolvedType);
+      const resolvedTypeToUse = customType || resolvedType;
+      const direction = getDirectionByType(resolvedTypeToUse);
       await createTransaction({
         poolId: finalPoolId,
         projectId: finalProjectId || null,
         investorId: finalInvestorId || null,
         relatedPoolId: finalRelatedPoolId || null,
-        type: resolvedType,
+        type: resolvedTypeToUse,
         direction,
         amount: Number(amount),
         date,
@@ -606,12 +697,109 @@ export function Transactions() {
         </button>
       </div>
 
+      {/* 搜索与筛选栏 */}
+      <div className="glass-card no-hover" style={{ padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", backgroundColor: "rgba(9, 13, 26, 0.5)", marginBottom: "20px" }}>
+        <div className="search-box" style={{ width: "280px" }}>
+          <Search size={16} className="search-icon" />
+          <input 
+            type="text" 
+            placeholder="搜索凭证号、摘要、收付款方..." 
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            className="search-input"
+          />
+        </div>
+
+        <select 
+          value={filterType} 
+          onChange={(e) => setFilterType(e.target.value)}
+          className="form-input"
+          style={{ width: "180px" }}
+        >
+          <option value="">全部交易类型</option>
+          <option value="capital_call">LP实缴打款</option>
+          <option value="investment">项目投资</option>
+          <option value="return">项目回款</option>
+          <option value="distribution">收益分红</option>
+          <option value="fee">管理费/支出</option>
+          <option value="pool_transfer_out">资金池划出</option>
+          <option value="pool_transfer_in">资金池划入</option>
+          <option value="adjustment">人工核校</option>
+        </select>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>交易日期范围：</span>
+          <input 
+            type="date" 
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="form-input"
+            style={{ width: "140px" }}
+          />
+          <span style={{ color: 'var(--text-secondary)' }}>至</span>
+          <input 
+            type="date" 
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="form-input"
+            style={{ width: "140px" }}
+          />
+        </div>
+      </div>
+
       <div className="glass-card no-hover" style={{ padding: "20px" }}>
         <DataTable 
           headers={headers} 
-          data={txs} 
+          data={paginatedTxs} 
           emptyMessage={loading ? "加载中..." : "暂无记账流水记录"}
         />
+
+        {/* 分页控制栏 */}
+        <div style={styles.paginationRow}>
+          <div style={styles.paginationLeft}>
+            <span>每页显示：</span>
+            <select 
+              value={pageSize} 
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="form-input"
+              style={styles.pageSizeSelect}
+            >
+              <option value={10}>10 条</option>
+              <option value={20}>20 条</option>
+              <option value={50}>50 条</option>
+            </select>
+            <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
+              共 {filteredTxs.length} 条记录
+            </span>
+          </div>
+          
+          {totalPages > 1 && (
+            <div style={styles.paginationRight}>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="btn-secondary"
+                style={styles.pageBtn}
+              >
+                上一页
+              </button>
+              <span style={styles.pageIndicator}>
+                第 {currentPage} / {totalPages} 页
+              </span>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="btn-secondary"
+                style={styles.pageBtn}
+              >
+                下一页
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="财务记账录入 (Ledger Transaction)">
@@ -815,38 +1003,55 @@ export function Transactions() {
             </>
           )}
 
-          <div className="form-group" style={{ marginTop: '10px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-            <label className="form-label">发生金额 *</label>
-            <AmountInput 
-              value={amount} 
-              onChange={setAmount}
-              placeholder="请输入流水具体金额"
-            />
+          <div style={{ display: 'flex', gap: '16px', marginTop: '10px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: '12px' }}>
+              <label className="form-label">发生金额 *</label>
+              <AmountInput 
+                value={amount} 
+                onChange={setAmount}
+                placeholder="请输入流水具体金额"
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: '12px' }}>
+              <label className="form-label">交易发生日期 *</label>
+              <input 
+                type="date" 
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="form-input mono"
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">交易发生日期 *</label>
-            <input 
-              type="date" 
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="form-input mono"
-            />
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: '12px' }}>
+              <label className="form-label">交易类型 (系统定义) *</label>
+              <select value={customType} onChange={(e) => setCustomType(e.target.value)} className="form-input" required style={{ height: '42px' }}>
+                <option value="capital_call">LP实缴打款 (capital_call)</option>
+                <option value="investment">项目投资 (investment)</option>
+                <option value="return">项目回款 (return)</option>
+                <option value="distribution">收益分红 (distribution)</option>
+                <option value="fee">管理费/支出 (fee)</option>
+                <option value="pool_transfer_out">资金池划出 (pool_transfer_out)</option>
+                <option value="pool_transfer_in">资金池划入 (pool_transfer_in)</option>
+                <option value="adjustment">人工核校 (adjustment)</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: '12px' }}>
+              <label className="form-label">记账凭证编号</label>
+              <input 
+                type="text" 
+                value={referenceNo}
+                onChange={(e) => setReferenceNo(e.target.value)}
+                placeholder="如网银电子回单号"
+                className="form-input mono"
+                style={{ height: '42px' }}
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">记账凭证编号</label>
-            <input 
-              type="text" 
-              value={referenceNo}
-              onChange={(e) => setReferenceNo(e.target.value)}
-              placeholder="如网银电子回单号"
-              className="form-input mono"
-            />
-          </div>
-
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: '12px' }}>
             <label className="form-label">交易摘要说明</label>
             <textarea 
               value={description}
@@ -900,6 +1105,50 @@ const styles = {
     marginTop: "16px",
     borderTop: "1px solid var(--border)",
     paddingTop: "16px"
+  },
+  paginationRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "20px",
+    paddingTop: "16px",
+    borderTop: "1px solid var(--border)"
+  },
+  paginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.85rem"
+  },
+  pageSizeSelect: {
+    padding: "4px 8px",
+    fontSize: "0.85rem",
+    width: "90px",
+    height: "32px",
+    borderRadius: "4px",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  paginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  pageBtn: {
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    borderRadius: "4px",
+    cursor: "pointer",
+    height: "32px",
+    display: "flex",
+    alignItems: "center"
+  },
+  pageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    fontWeight: "500"
   }
 };
 export default Transactions;
