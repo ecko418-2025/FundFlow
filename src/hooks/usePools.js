@@ -151,7 +151,7 @@ export function usePools() {
       investment.parentPoolId,
       investment.childPoolId,
       investment.investedAmount,
-      investment.sharePct,
+      investment.sharePct !== undefined && investment.sharePct !== null ? investment.sharePct : 0,
       investment.note || ""
     ];
     await querySQL(sql, params);
