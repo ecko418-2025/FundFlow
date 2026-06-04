@@ -120,7 +120,7 @@ export function LPDashboard({ user }) {
     <div style={styles.container}>
       <div style={styles.welcome}>
         <h2>您好，{user?.displayName || "出资人"}</h2>
-        <p>这是您在 FundFlow 管理的资金池资产详情与往来流水的综合视图。</p>
+        <p>这是您在 贷管家 管理的资金池资产详情与往来流水的综合视图。</p>
       </div>
 
       {/* LP 专属资产总览卡片 */}

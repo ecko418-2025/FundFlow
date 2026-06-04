@@ -159,7 +159,7 @@ export function Dashboard() {
       {/* 标题 */}
       <div style={styles.welcome}>
         <h2>欢迎回来，管理员</h2>
-        <p>这是您管理的 FundFlow 人民币资金池总体财务健康状况。</p>
+        <p>这是您管理的 贷管家 人民币资金池总体财务健康状况。</p>
       </div>
 
       {/* 统计指标卡片组 */}

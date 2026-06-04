@@ -39,7 +39,7 @@ export function Sidebar({ user, onLogout }) {
       {/* 系统 Logo */}
       <div style={styles.logoContainer}>
         <TrendingUp size={28} color="var(--accent-gold)" />
-        <span style={styles.logoText}>FundFlow</span>
+        <span style={styles.logoText}>贷管家</span>
         <span style={styles.logoBadge}>SQL</span>
       </div>
 

@@ -45,7 +45,7 @@ export function Login() {
           <div style={styles.logoGlow}>
             <TrendingUp size={36} color="var(--accent-gold)" />
           </div>
-          <h2 style={styles.systemName}>FundFlow 资金流</h2>
+          <h2 style={styles.systemName}>贷管家</h2>
           <p style={styles.systemSlogan}>人民币项目制多层级资金池记账平台</p>
         </div>
 

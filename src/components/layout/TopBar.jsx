@@ -15,7 +15,7 @@ export function TopBar() {
     <header style={styles.topbar}>
       {/* 顶部标题 */}
       <div>
-        <h1 style={styles.title}>FundFlow 资金管理台</h1>
+        <h1 style={styles.title}>贷管家 资金管理台</h1>
         <p style={styles.subtitle}>人民币项目制多级资金池账本系统</p>
       </div>
 
