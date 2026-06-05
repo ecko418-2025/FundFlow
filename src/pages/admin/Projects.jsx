@@ -131,9 +131,10 @@ export function Projects() {
       `);
 
       const invData = await querySQL(`
-        SELECT pi.project_id, i.name 
+        SELECT pi.project_id, COALESCE(i.name, p.name) AS name
         FROM project_investors pi 
-        JOIN investors i ON pi.investor_id = i.id
+        LEFT JOIN investors i ON pi.investor_id = i.id
+        LEFT JOIN pools p ON pi.investor_id = p.id
       `);
 
       const invMap = {};

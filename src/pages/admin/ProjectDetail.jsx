@@ -90,9 +90,12 @@ export function ProjectDetail() {
       setTxs(txResult);
 
       const piResult = await querySQL(
-        `SELECT pi.*, i.name AS investor_name, i.type AS investor_type
+        `SELECT pi.*, 
+                COALESCE(i.name, p.name) AS investor_name, 
+                COALESCE(i.type, 'pool') AS investor_type
          FROM project_investors pi
-         JOIN investors i ON pi.investor_id = i.id
+         LEFT JOIN investors i ON pi.investor_id = i.id
+         LEFT JOIN pools p ON pi.investor_id = p.id
          WHERE pi.project_id = ?`,
         [id]
       );

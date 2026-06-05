@@ -176,9 +176,12 @@ export function Transactions() {
       setAllPoolMembers(allMembers || []);
       
       const allProjInvs = await querySQL(`
-        SELECT pi.project_id, pi.investor_id, pi.invested_amount, i.name AS investor_name, i.type AS investor_type 
+        SELECT pi.project_id, pi.investor_id, pi.invested_amount, 
+               COALESCE(i.name, p.name) AS investor_name, 
+               COALESCE(i.type, 'pool') AS investor_type 
         FROM project_investors pi 
         LEFT JOIN investors i ON pi.investor_id = i.id
+        LEFT JOIN pools p ON pi.investor_id = p.id
       `);
       setAllProjectInvestors(allProjInvs || []);
 
