@@ -133,8 +133,7 @@ CREATE TABLE `transactions` (
   PRIMARY KEY (`id`),
   FOREIGN KEY (`pool_id`) REFERENCES `pools` (`id`) ON DELETE CASCADE,
   FOREIGN KEY (`related_pool_id`) REFERENCES `pools` (`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`investor_id`) REFERENCES `investors` (`id`) ON DELETE SET NULL
+  FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- 7. 收益分配方案表
@@ -166,8 +165,7 @@ CREATE TABLE `distribution_items` (
   `amount` DECIMAL(18,2) NOT NULL COMMENT '分得的红利金额',
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_dist_investor` (`distribution_id`, `investor_id`),
-  FOREIGN KEY (`distribution_id`) REFERENCES `distributions` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`investor_id`) REFERENCES `investors` (`id`) ON DELETE RESTRICT
+  FOREIGN KEY (`distribution_id`) REFERENCES `distributions` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- 8.5. 系统全局配置表
