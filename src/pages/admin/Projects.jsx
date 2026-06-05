@@ -558,17 +558,6 @@ export function Projects() {
             <Pencil size={14} />
             <span>编辑</span>
           </button>
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/admin/projects/${v}`);
-            }}
-            className="btn-secondary"
-            style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
-          >
-            <Eye size={14} />
-            <span>详情明细</span>
-          </button>
         </div>
       )
     },
@@ -579,7 +568,6 @@ export function Projects() {
       <div style={styles.pageHeader}>
         <div>
           <h2>投建项目管理</h2>
-          <p>录入实体投资项目组合，并管理其出资方和收支明细。</p>
         </div>
       </div>
 

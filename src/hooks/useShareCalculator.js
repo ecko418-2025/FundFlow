@@ -13,13 +13,11 @@ export function useShareCalculator() {
       // 1. Fetch all necessary edges and nodes
       const [
         poolMembers,
-        poolInvestments,
         projectInvestors,
         investors,
         pools
       ] = await Promise.all([
         querySQL(`SELECT * FROM pool_members WHERE status = 'active'`),
-        querySQL(`SELECT * FROM pool_investments WHERE status = 'active'`),
         querySQL(`SELECT * FROM project_investors WHERE status = 'active'`),
         querySQL(`SELECT * FROM investors`),
         querySQL(`SELECT * FROM pools`)
@@ -27,6 +25,8 @@ export function useShareCalculator() {
 
       const investorMap = new Map(investors.map(i => [i.id, i.name]));
       const poolMap = new Map(pools.map(p => [p.id, p.name]));
+      // 机构池 ID 集合，用于判断是否需要继续向上穿透
+      const poolIds = new Set(pools.map(p => p.id));
 
       const getEntityName = (id) => {
         return investorMap.get(id) || poolMap.get(id) || "未知实体";
@@ -43,18 +43,18 @@ export function useShareCalculator() {
         allocations = pInv.map(pi => {
           const share = (Number(pi.invested_amount || 0) / totalInvested) * 100;
           // investor_id in project_investors can be pool or investor
-          const type = poolMap.has(pi.investor_id) ? 'pool' : 'investor';
+          const type = poolIds.has(pi.investor_id) ? 'pool' : 'investor';
           return { id: pi.investor_id, share, type };
         });
       } else if (targetType === "pool") {
-        // Direct allocations for a pool come from its direct members and parent pools
+        // 直接出资方现在统一在 pool_members 中（包括母池）
         const pMembers = poolMembers.filter(pm => pm.pool_id === targetId);
-        const pInvestments = poolInvestments.filter(pi => pi.child_pool_id === targetId);
         
-        allocations = [
-          ...pMembers.map(pm => ({ id: pm.investor_id, share: Number(pm.share_pct || 0), type: 'investor' })),
-          ...pInvestments.map(pi => ({ id: pi.parent_pool_id, share: Number(pi.share_pct || 0), type: 'pool' }))
-        ];
+        allocations = pMembers.map(pm => ({ 
+          id: pm.investor_id, 
+          share: Number(pm.share_pct || 0), 
+          type: poolIds.has(pm.investor_id) ? 'pool' : 'investor' 
+        }));
       }
 
       // 3. Process penetration if needed
@@ -75,28 +75,24 @@ export function useShareCalculator() {
 
       // Helper for recursive traversal
       const penetratePool = (poolId, currentMultiplier, isDirectLevel) => {
-        // Find direct members of this pool
+        // Find direct members of this pool (could be individuals or parent pools)
         const pMembers = poolMembers.filter(pm => pm.pool_id === poolId);
         for (const pm of pMembers) {
-          const share = Number(pm.share_pct || 0) * currentMultiplier;
-          if (share > 0) {
-            const existing = finalShares.get(pm.investor_id) || { direct: 0, indirect: 0 };
-            if (isDirectLevel) {
-              existing.direct += share;
+          const rawShare = Number(pm.share_pct || 0) * currentMultiplier;
+          if (rawShare > 0) {
+            if (poolIds.has(pm.investor_id)) {
+              // 是母池，继续递归
+              penetratePool(pm.investor_id, rawShare / 100.0, false);
             } else {
-              existing.indirect += share;
+              // 是最终投资者
+              const existing = finalShares.get(pm.investor_id) || { direct: 0, indirect: 0 };
+              if (isDirectLevel) {
+                existing.direct += rawShare;
+              } else {
+                existing.indirect += rawShare;
+              }
+              finalShares.set(pm.investor_id, existing);
             }
-            finalShares.set(pm.investor_id, existing);
-          }
-        }
-
-        // Find parent pools of this pool
-        const pInvestments = poolInvestments.filter(pi => pi.child_pool_id === poolId);
-        for (const pi of pInvestments) {
-          const share = Number(pi.share_pct || 0) * currentMultiplier;
-          if (share > 0) {
-            // Recursive call (it is no longer direct level relative to the target)
-            penetratePool(pi.parent_pool_id, share / 100.0, false);
           }
         }
       };
@@ -109,8 +105,6 @@ export function useShareCalculator() {
           finalShares.set(alloc.id, existing);
         } else if (alloc.type === 'pool') {
           // It's a pool, penetrate it. 
-          // If the target itself was a pool, the parent pool is a direct investor in the target pool, 
-          // but its members are INDIRECT relative to the target.
           penetratePool(alloc.id, alloc.share / 100.0, false);
         }
       }

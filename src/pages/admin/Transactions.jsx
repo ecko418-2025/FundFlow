@@ -51,18 +51,21 @@ export function Transactions() {
   const getSourceName = (row) => {
     if (row.type === "capital_call") return row.investor_name || "";
     if (row.type === "investment") return row.investor_name || row.pool_name || "";
-    if (row.type === "return" || row.type === "distribution") return row.project_name || "";
+    if (row.type === "pool_investment") return row.pool_name || "";
     if (row.type === "pool_transfer_out") return row.pool_name || "";
     if (row.type === "pool_transfer_in") return row.related_pool_name || "";
+    if (row.type === "return" || row.type === "distribution") return row.project_name || "";
     return row.direction === "in" ? "外部来源" : (row.pool_name || "");
   };
 
   const getTargetName = (row) => {
     if (row.type === "capital_call") return row.pool_name || "";
     if (row.type === "investment") return row.project_name || "";
-    if (row.type === "return" || row.type === "distribution") return row.investor_name || row.pool_name || "";
-    if (row.type === "pool_transfer_out") return row.related_pool_name || "";
+    if (row.type === "pool_investment") return row.related_pool_name || "";
     if (row.type === "pool_transfer_in") return row.pool_name || "";
+    if (row.type === "pool_transfer_out") return row.related_pool_name || "";
+    if (row.type === "return") return row.investor_name || row.pool_name || "";
+    if (row.type === "distribution") return row.investor_name || row.pool_name || "";
     return row.direction === "in" ? (row.pool_name || "") : "外部去向";
   };
 
@@ -129,22 +132,51 @@ export function Transactions() {
   // 新的一进一出关联实体状态
   const [sourceEntity, setSourceEntity] = useState(""); 
   const [targetEntity, setTargetEntity] = useState("");
+  const [searchSource, setSearchSource] = useState(""); 
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false); // 新增：控制下拉框显隐
+
+  const filteredSourceOptions = React.useMemo(() => {
+    if (txTab !== "pool_in") return [];
+    const term = searchSource.toLowerCase().trim();
+    
+    // 1. 内部资金池 (母池)
+    const poolsMatches = pools
+      .filter(p => p.id !== targetEntity)
+      .filter(p => !term || p.name.toLowerCase().includes(term))
+      .map(p => ({ 
+        value: `pool:${p.id}`, 
+        label: p.name, 
+        icon: '🏦',
+        sub: `可用: ${formatCNY(p.available_balance, false)}`,
+        group: '上级母池资金划拨'
+      }));
+
+    // 2. 全量出资人 (LP)
+    const investorMatches = investors
+      .filter(i => !term || i.name.toLowerCase().includes(term))
+      .map(i => ({ 
+        value: `investor:${targetEntity}:${i.id}`, 
+        label: i.name,
+        icon: i.type === 'individual' ? '👤' : '🏢',
+        sub: i.type === 'individual' ? '个人 LP' : '机构 LP',
+        group: '全量出资人 (支持自动登记)'
+      }));
+
+    return { pools: poolsMatches, investors: investorMatches };
+  }, [txTab, pools, investors, targetEntity, searchSource]);
 
   const [customType, setCustomType] = useState("capital_call");
 
   useEffect(() => {
     if (txTab === "pool_in") {
-      if (sourceEntity.startsWith('pool:')) {
-        setCustomType("pool_transfer_in");
-      } else {
-        setCustomType("capital_call");
-      }
+      // 无论是 LP 还是母池注资，统一表现为 capital_call (进账方视角)
+      setCustomType("capital_call");
     } else if (txTab === "invest_out") {
       setCustomType("investment");
     } else if (txTab === "project_return") {
       setCustomType("return");
     } else if (txTab === "pool_liquidation") {
-      setCustomType("return");
+      setCustomType("distribution");
     }
   }, [txTab, sourceEntity, targetEntity]);
 
@@ -186,10 +218,10 @@ export function Transactions() {
       setAllProjectInvestors(allProjInvs || []);
 
       const allPoolInvs = await querySQL(`
-        SELECT pi.parent_pool_id, pi.child_pool_id, pi.invested_amount, p.name AS parent_pool_name 
-        FROM pool_investments pi 
-        JOIN pools p ON pi.parent_pool_id = p.id
-        WHERE pi.status = 'active'
+        SELECT pm.investor_id AS parent_pool_id, pm.pool_id AS child_pool_id, pm.called_amount AS invested_amount, p.name AS parent_pool_name 
+        FROM pool_members pm 
+        JOIN pools p ON pm.investor_id = p.id
+        WHERE pm.status = 'active'
       `);
       setAllPoolInvestments(allPoolInvs || []);
     } catch (err) {
@@ -203,24 +235,24 @@ export function Transactions() {
   }, []);
 
   // 根据类型自动变更流向
-  const getDirectionByType = (t) => {
-    const map = {
-      capital_call: "in",
-      investment: "out",
-      return: "in",
-      distribution: "out",
-      fee: "out",
-      pool_transfer_out: "out",
-      pool_transfer_in: "in",
-      adjustment: "in"
+    const getDirectionByType = (t) => {
+      const map = {
+        capital_call: "in",
+        investment: "out",
+        pool_investment: "out", // 新增：母池注资子池属于流出
+        return: "in",
+        distribution: "out",
+        fee: "out",
+        adjustment: "in"
+      };
+      return map[t] || "in";
     };
-    return map[t] || "in";
-  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
 
     let resolvedType, finalPoolId, finalProjectId, finalInvestorId, finalRelatedPoolId;
+    let secondaryTx = null; // 用于存储需要同步生成的第二笔流水（如母池扣款）
 
     if (txTab === "pool_in") {
       if (!targetEntity) return alert("请选择进账资金池");
@@ -228,8 +260,23 @@ export function Transactions() {
       
       finalPoolId = targetEntity; 
       if (sourceEntity.startsWith('pool:')) {
-        resolvedType = "pool_transfer_in";
-        finalRelatedPoolId = sourceEntity.split(':')[1];
+        // 核心变更：母池注资子池。
+        // 子池视角：收到来自母池的实缴 (capital_call)
+        resolvedType = "capital_call";
+        finalInvestorId = sourceEntity.split(':')[1]; // 母池作为 investorId
+        
+        // 同步生成母池视角的流出流水 (pool_investment)
+        secondaryTx = {
+          poolId: finalInvestorId,
+          relatedPoolId: finalPoolId,
+          type: "pool_investment",
+          direction: "out",
+          amount: Number(amount),
+          date,
+          description: `注资子池: ${pools.find(p => p.id === finalPoolId)?.name || finalPoolId}`,
+          referenceNo,
+          createdBy: "admin"
+        };
       } else if (sourceEntity.startsWith('investor:')) {
         resolvedType = "capital_call";
         const parts = sourceEntity.split(':');
@@ -272,8 +319,10 @@ export function Transactions() {
       finalPoolId = sourceEntity; 
       
       if (targetEntity.startsWith('pool:')) {
-        resolvedType = "pool_transfer_out";
+        // 同样处理清算退回母池的情况
+        resolvedType = "pool_investment"; // 母池视角是投资收回（借用此类型或增加 pool_return）
         finalRelatedPoolId = targetEntity.split(':')[1];
+        // 此处暂按简单流出处理，实际业务中清算退款较为复杂
       } else if (targetEntity.startsWith('investor:')) {
         resolvedType = "distribution";
         const parts = targetEntity.split(':');
@@ -286,61 +335,11 @@ export function Transactions() {
       return;
     }
 
-    // ======== 新增：回款/清算最大额度校验 ========
-    let maxAllowed = Infinity;
-    let typeName = "";
-    if (txTab === "project_return") {
-      typeName = "项目回款(本金)";
-      const targetId = targetEntity.startsWith('pool:') ? targetEntity.split(':')[1] : targetEntity.split(':')[2];
-      const pi = allProjectInvestors.find(x => x.project_id === finalProjectId && x.investor_id === targetId);
-      const investedAmt = pi ? Number(pi.invested_amount || 0) : 0;
-      
-      const cumulativeReturned = txs.filter(tx => 
-        tx.project_id === finalProjectId && 
-        tx.type === "return" && 
-        ((targetEntity.startsWith('pool:') && tx.pool_id === targetId) || 
-         (targetEntity.startsWith('investor:') && tx.investor_id === targetId))
-      ).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-      
-      maxAllowed = investedAmt - cumulativeReturned;
-    } else if (txTab === "pool_liquidation") {
-      typeName = "资金池清算退款";
-      if (targetEntity.startsWith('pool:')) {
-        const parentPoolId = targetEntity.split(':')[1];
-        const pinv = allPoolInvestments.find(x => x.child_pool_id === finalPoolId && x.parent_pool_id === parentPoolId);
-        const investedAmt = pinv ? Number(pinv.invested_amount || 0) : 0;
-        
-        const cumulativeReturned = txs.filter(tx => 
-          tx.pool_id === finalPoolId && 
-          tx.type === "pool_transfer_out" && 
-          tx.related_pool_id === parentPoolId
-        ).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-        
-        maxAllowed = investedAmt - cumulativeReturned;
-      } else if (targetEntity.startsWith('investor:')) {
-        const invId = targetEntity.split(':')[2];
-        const pm = allPoolMembers.find(x => x.pool_id === finalPoolId && x.investor_id === invId);
-        const calledAmt = pm ? Number(pm.called_amount || 0) : 0;
-
-        const cumulativeReturned = txs.filter(tx => 
-          tx.pool_id === finalPoolId && 
-          tx.type === "distribution" && 
-          tx.investor_id === invId
-        ).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-        
-        maxAllowed = calledAmt - cumulativeReturned;
-      }
-    }
-
-    if ((txTab === "project_return" || txTab === "pool_liquidation") && Number(amount) > maxAllowed) {
-      alert(`为保持等式平衡，${typeName}不得高于该主体的实缴总额！\n\n本次最多可退回本金：¥${(maxAllowed/10000).toFixed(2)}万\n\n超出的部分请在“收益分配”中单独处理。`);
-      return;
-    }
-    // =====================================
-
     try {
       const resolvedTypeToUse = customType || resolvedType;
       const direction = getDirectionByType(resolvedTypeToUse);
+      
+      // 1. 创建主流水
       await createTransaction({
         poolId: finalPoolId,
         projectId: finalProjectId || null,
@@ -355,8 +354,15 @@ export function Transactions() {
         createdBy: "admin"
       });
 
+      // 2. 如果有同步的次级流水，一并创建
+      if (secondaryTx) {
+        await createTransaction(secondaryTx);
+      }
+
       setSourceEntity("");
       setTargetEntity("");
+      setSearchSource("");
+      setIsDropdownOpen(false);
       setAmount("");
       setDescription("");
       setReferenceNo("");
@@ -383,13 +389,12 @@ export function Transactions() {
 
   const handleExport = () => {
     const typeLabels = {
-      capital_call: "LP实缴出资",
-      investment: "资金投向项目",
-      return: "项目利息回款",
-      distribution: "收益分红给LP",
+      capital_call: "实缴打款(入)",
+      investment: "项目打款投入(出)",
+      pool_investment: "母池注资(出)",
+      return: "项目利息回款(入)",
+      distribution: "收益分红(出)",
       fee: "管理费/日常支出",
-      pool_transfer_out: "划拨母池资金至子池",
-      pool_transfer_in: "子池收到母池划拨",
       adjustment: "人工核校"
     };
 
@@ -407,12 +412,11 @@ export function Transactions() {
   const mapImportType = (val) => {
     const v = val.toString().trim();
     if (v.includes("实缴") || v.toLowerCase().includes("capital_call")) return "capital_call";
-    if (v.includes("投向") || v.includes("投资") || v.toLowerCase().includes("investment")) return "investment";
-    if (v.includes("回款") || v.toLowerCase().includes("return")) return "return";
+    if (v.includes("项目打款") || v.includes("项目投资") || v.toLowerCase().includes("investment")) return "investment";
+    if (v.includes("母池注资") || v.toLowerCase().includes("pool_investment")) return "pool_investment";
+    if (v.includes("项目回款") || v.toLowerCase().includes("return")) return "return";
     if (v.includes("分红") || v.toLowerCase().includes("distribution")) return "distribution";
     if (v.includes("管理费") || v.includes("支出") || v.toLowerCase().includes("fee")) return "fee";
-    if (v.includes("划出") || v.toLowerCase().includes("transfer_out")) return "pool_transfer_out";
-    if (v.includes("划入") || v.toLowerCase().includes("transfer_in")) return "pool_transfer_in";
     return null;
   };
 
@@ -577,19 +581,13 @@ export function Transactions() {
   };
 
   const headers = [
+    { key: "id", label: "流水编号", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>{v}</span> },
     { key: "date", label: "发生日期", render: (v) => formatDate(v) },
     { 
       key: "sourceName", 
       label: "出账方 (Source)", 
       render: (_, row) => {
-        let name = "未知";
-        if (row.type === "capital_call") name = row.investor_name;
-        else if (row.type === "investment") name = row.investor_name || row.pool_name;
-        else if (row.type === "return" || row.type === "distribution") name = row.project_name;
-        else if (row.type === "pool_transfer_out") name = row.pool_name;
-        else if (row.type === "pool_transfer_in") name = row.related_pool_name;
-        else name = row.direction === "in" ? "外部来源" : (row.pool_name || "未知");
-        
+        const name = getSourceName(row);
         return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
       }
     },
@@ -597,14 +595,7 @@ export function Transactions() {
       key: "targetName", 
       label: "进账方 (Target)", 
       render: (_, row) => {
-        let name = "未知";
-        if (row.type === "capital_call") name = row.pool_name;
-        else if (row.type === "investment") name = row.project_name;
-        else if (row.type === "return" || row.type === "distribution") name = row.investor_name || row.pool_name;
-        else if (row.type === "pool_transfer_out") name = row.related_pool_name;
-        else if (row.type === "pool_transfer_in") name = row.pool_name;
-        else name = row.direction === "in" ? (row.pool_name || "未知") : "外部去向";
-        
+        const name = getTargetName(row);
         return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
       }
     },
@@ -613,22 +604,22 @@ export function Transactions() {
       label: "交易类型", 
       render: (v) => {
         const typeMap = {
-          capital_call: "LP实缴打款",
-          investment: "项目投资",
-          return: "项目回款",
-          distribution: "收益分红",
+          capital_call: "实缴打款(入)",
+          investment: "项目投资(出)",
+          pool_investment: "母池注资(出)",
+          return: "项目回款(入)",
+          distribution: "收益分红(出)",
           fee: "管理费/支出",
-          pool_transfer_out: "资金池划出",
-          pool_transfer_in: "资金池划入",
           adjustment: "人工核校"
         };
         const colorMap = {
           capital_call: "warning", // 金色
           investment: "danger", // 红色
-          pool_transfer_out: "default", // 灰色
-          pool_transfer_in: "default", // 灰色
+          pool_investment: "danger", // 红色（也是投资支出）
+          return: "success",
+          distribution: "success",
         };
-        const badgeStatus = colorMap[v] || "success";
+        const badgeStatus = colorMap[v] || "default";
         return <Badge text={typeMap[v] || v} status={badgeStatus} />;
       }
     },
@@ -685,7 +676,6 @@ export function Transactions() {
       <div style={styles.pageHeader}>
         <div>
           <h2>核心资金流水账本 (Ledger)</h2>
-          <p>录入系统全量财务流水，自动计算各级池子的动态余额与实缴数据。</p>
         </div>
       </div>
 
@@ -736,13 +726,12 @@ export function Transactions() {
           style={{ width: "180px" }}
         >
           <option value="">全部交易类型</option>
-          <option value="capital_call">LP实缴打款</option>
+          <option value="capital_call">实缴打款</option>
           <option value="investment">项目投资</option>
+          <option value="pool_investment">母池注资</option>
           <option value="return">项目回款</option>
           <option value="distribution">收益分红</option>
           <option value="fee">管理费/支出</option>
-          <option value="pool_transfer_out">资金池划出</option>
-          <option value="pool_transfer_in">资金池划入</option>
           <option value="adjustment">人工核校</option>
         </select>
 
@@ -868,26 +857,115 @@ export function Transactions() {
                 </select>
               </div>
               
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }}>
                 <label className="form-label">出账方 (A) - 资金来源 *</label>
                 {!targetEntity ? (
-                  <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", margin: "6px 0" }}>⬆️ 请先选择上方的进账资金池，才能选择对应的出账方</p>
+                  <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", margin: "6px 0" }}>⬆️ 请先选择上方的进账资金池</p>
                 ) : (
-                  <select value={sourceEntity} onChange={(e) => setSourceEntity(e.target.value)} className="form-input" required>
-                    <option value="">-- 请选择打款的出账方 --</option>
-                    <optgroup label="上级母池资金划拨">
-                      {pools.filter(p => p.id !== targetEntity).map(p => (
-                        <option key={`pool:${p.id}`} value={`pool:${p.id}`}>{p.name} (可用: {formatCNY(p.available_balance, false)})</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="本池出资人(LP)实缴">
-                      {allPoolMembers.filter(m => m.pool_id === targetEntity).map(m => (
-                        <option key={`investor:${m.pool_id}:${m.investor_id}`} value={`investor:${m.pool_id}:${m.investor_id}`}>
-                          {m.investor_name} ({m.investor_type === "individual" ? "个人" : "机构"})
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    {/* 下拉框触发器 */}
+                    <div 
+                      className="form-input" 
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      style={{ 
+                        cursor: 'pointer', 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        backgroundColor: 'var(--bg-secondary)',
+                        minHeight: '42px',
+                        borderColor: isDropdownOpen ? 'var(--accent-blue)' : 'var(--border)'
+                      }}
+                    >
+                      <span style={{ color: sourceEntity ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {sourceEntity ? (() => {
+                          const all = [...filteredSourceOptions.pools, ...filteredSourceOptions.investors];
+                          const found = all.find(o => o.value === sourceEntity);
+                          return found ? `${found.icon} ${found.label}` : '-- 请选择出账方 --';
+                        })() : '-- 点击此处进行搜索并选择 --'}
+                      </span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{isDropdownOpen ? '▲' : '▼'}</span>
+                    </div>
+
+                    {/* 浮动下拉菜单 */}
+                    {isDropdownOpen && (
+                      <div className="glass-card" style={{ 
+                        position: 'absolute', 
+                        top: '100%', 
+                        left: 0, 
+                        right: 0, 
+                        zIndex: 1000, 
+                        marginTop: '6px',
+                        padding: '12px',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                        maxHeight: '380px',
+                        overflowY: 'auto',
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg-primary)'
+                      }}>
+                        <div style={{ position: 'relative', marginBottom: '12px' }}>
+                          <input 
+                            type="text"
+                            autoFocus
+                            placeholder="🔍 输入名称搜索出资人或母池..."
+                            value={searchSource}
+                            onChange={(e) => setSearchSource(e.target.value)}
+                            className="form-input"
+                            style={{ backgroundColor: 'var(--surface-secondary)', paddingLeft: '32px' }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        
+                        {/* 搜索结果分类展示 */}
+                        {['pools', 'investors'].map(key => {
+                          const items = filteredSourceOptions[key];
+                          if (items.length === 0) return null;
+                          return (
+                            <div key={key} style={{ marginBottom: '16px' }}>
+                              <div style={{ fontSize: '11px', color: 'var(--accent-blue)', fontWeight: 700, marginBottom: '8px', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', paddingBottom: '4px' }}>
+                                {items[0].group}
+                              </div>
+                              {items.map(opt => (
+                                <div 
+                                  key={opt.value}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSourceEntity(opt.value);
+                                    setIsDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    backgroundColor: sourceEntity === opt.value ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: '2px'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = sourceEntity === opt.value ? 'rgba(59, 130, 246, 0.2)' : 'transparent'}
+                                >
+                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: 600 }}>{opt.icon} {opt.label}</span>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{opt.sub}</span>
+                                  </div>
+                                  {sourceEntity === opt.value && <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>✓</span>}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+
+                        {filteredSourceOptions.pools.length === 0 && filteredSourceOptions.investors.length === 0 && (
+                          <div style={{ textAlign: 'center', padding: '30px 20px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                            未能找到匹配的实体，请检查名称
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </>
@@ -1047,13 +1125,12 @@ export function Transactions() {
             <div className="form-group" style={{ flex: 1, marginBottom: '12px' }}>
               <label className="form-label">交易类型 (系统定义) *</label>
               <select value={customType} onChange={(e) => setCustomType(e.target.value)} className="form-input" required style={{ height: '42px' }}>
-                <option value="capital_call">LP实缴打款</option>
+                <option value="capital_call">实缴打款</option>
                 <option value="investment">项目投资</option>
+                <option value="pool_investment">母池注资</option>
                 <option value="return">项目回款</option>
                 <option value="distribution">收益分红</option>
                 <option value="fee">管理费/支出</option>
-                <option value="pool_transfer_out">资金池划出</option>
-                <option value="pool_transfer_in">资金池划入</option>
                 <option value="adjustment">人工核校</option>
               </select>
             </div>

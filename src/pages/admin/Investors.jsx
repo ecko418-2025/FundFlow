@@ -390,7 +390,6 @@ export function Investors() {
       <div style={styles.pageHeader}>
         <div>
           <h2>出资方管理</h2>
-          <p>维护系统内所有资金参与主体，包括个人投资者、外部母基金实体，以及作为项目出资方的内部资金池（🏦 自动同步，不可在此编辑）。</p>
         </div>
       </div>
 

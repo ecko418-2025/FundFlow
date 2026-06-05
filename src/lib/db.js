@@ -16,11 +16,10 @@ const mockDb = {
     { id: "pm-1", pool_id: "pool-1", investor_id: "inv-1", committed_amount: 20000000, called_amount: 15000000, share_pct: 42.8571, status: "active", joined_at: "2024-01-01 11:00:00" },
     { id: "pm-2", pool_id: "pool-1", investor_id: "inv-3", committed_amount: 30000000, called_amount: 20000000, share_pct: 57.1429, status: "active", joined_at: "2024-01-01 11:00:00" },
     { id: "pm-3", pool_id: "pool-2", investor_id: "inv-2", committed_amount: 10000000, called_amount: 5000000, share_pct: 25.0000, status: "active", joined_at: "2024-02-15 15:00:00" },
-    { id: "pm-4", pool_id: "pool-2", investor_id: "inv-3", committed_amount: 20000000, called_amount: 15000000, share_pct: 75.0000, status: "active", joined_at: "2024-02-15 15:00:00" }
-  ],
-  pool_investments: [
-    { id: "pi-1", parent_pool_id: "pool-1", child_pool_id: "pool-3", invested_amount: 5000000, share_pct: 50.0000, status: "active", invested_at: "2024-03-01 10:00:00", note: "大池A出资一半" },
-    { id: "pi-2", parent_pool_id: "pool-2", child_pool_id: "pool-3", invested_amount: 5000000, share_pct: 50.0000, status: "active", invested_at: "2024-03-02 11:00:00", note: "大池B出资一半" }
+    { id: "pm-4", pool_id: "pool-2", investor_id: "inv-3", committed_amount: 20000000, called_amount: 15000000, share_pct: 75.0000, status: "active", joined_at: "2024-02-15 15:00:00" },
+    // 母池作为机构 LP 加入子池 C
+    { id: "pm-5", pool_id: "pool-3", investor_id: "pool-1", committed_amount: 5000000, called_amount: 5000000, share_pct: 50.0000, status: "active", joined_at: "2024-03-01 10:00:00" },
+    { id: "pm-6", pool_id: "pool-3", investor_id: "pool-2", committed_amount: 5000000, called_amount: 5000000, share_pct: 50.0000, status: "active", joined_at: "2024-03-02 11:00:00" }
   ],
   projects: [
     { id: "proj-1", pool_id: "pool-1", name: "芯片半导体制造项目", code: "P-2024-001", status: "active", start_date: "2024-01-10", expected_end_date: "2026-12-31", actual_end_date: null, committed_amount: 20000000, invested_amount: 20000000, returned_amount: 0, description: "先进制程制造研发投融资", tags: ["芯片", "硬科技"], created_at: "2024-01-10 11:00:00" },
@@ -41,11 +40,11 @@ const mockDb = {
     { id: "tx-6", pool_id: null, project_id: "proj-1", investor_id: "inv-1", type: "investment", direction: "out", amount: 5000000, date: "2024-01-16", description: "张三直投芯片项目", reference_no: "PAY-20240116-01", attachment_url: null, created_at: "2024-01-16 10:00:00", created_by: "admin" },
     // Project 2 Investments (1000w from pool-2)
     { id: "tx-7", pool_id: "pool-2", project_id: "proj-2", investor_id: "pool-2", type: "investment", direction: "out", amount: 10000000, date: "2024-03-06", description: "大池B向电池项目打款", reference_no: "PAY-20240306-01", attachment_url: null, created_at: "2024-03-06 14:00:00", created_by: "admin" },
-    // Pool Transfers (pool-1 -> pool-3, pool-2 -> pool-3)
-    { id: "tx-8", pool_id: "pool-1", project_id: null, investor_id: null, related_pool_id: "pool-3", type: "pool_transfer_out", direction: "out", amount: 5000000, date: "2024-03-01", description: "大池A划拨子池C", reference_no: "TR-20240301-01", attachment_url: null, created_at: "2024-03-01 10:00:00", created_by: "admin" },
-    { id: "tx-9", pool_id: "pool-3", project_id: null, investor_id: null, related_pool_id: "pool-1", type: "pool_transfer_in", direction: "in", amount: 5000000, date: "2024-03-01", description: "收到大池A划拨", reference_no: "TR-20240301-01", attachment_url: null, created_at: "2024-03-01 10:00:00", created_by: "admin" },
-    { id: "tx-10", pool_id: "pool-2", project_id: null, investor_id: null, related_pool_id: "pool-3", type: "pool_transfer_out", direction: "out", amount: 5000000, date: "2024-03-02", description: "大池B划拨子池C", reference_no: "TR-20240302-01", attachment_url: null, created_at: "2024-03-02 11:00:00", created_by: "admin" },
-    { id: "tx-11", pool_id: "pool-3", project_id: null, investor_id: null, related_pool_id: "pool-2", type: "pool_transfer_in", direction: "in", amount: 5000000, date: "2024-03-02", description: "收到大池B划拨", reference_no: "TR-20240302-01", attachment_url: null, created_at: "2024-03-02 11:00:00", created_by: "admin" },
+    // 统一后的池间投资记录 (pool-1 -> pool-3, pool-2 -> pool-3)
+    { id: "tx-8", pool_id: "pool-1", project_id: null, investor_id: null, related_pool_id: "pool-3", type: "pool_investment", direction: "out", amount: 5000000, date: "2024-03-01", description: "大池A注资子池C", reference_no: "TR-20240301-01", attachment_url: null, created_at: "2024-03-01 10:00:00", created_by: "admin" },
+    { id: "tx-9", pool_id: "pool-3", project_id: null, investor_id: "pool-1", type: "capital_call", direction: "in", amount: 5000000, date: "2024-03-01", description: "收到大池A实缴", reference_no: "TR-20240301-01", attachment_url: null, created_at: "2024-03-01 10:00:00", created_by: "admin" },
+    { id: "tx-10", pool_id: "pool-2", project_id: null, investor_id: null, related_pool_id: "pool-3", type: "pool_investment", direction: "out", amount: 5000000, date: "2024-03-02", description: "大池B注资子池C", reference_no: "TR-20240302-01", attachment_url: null, created_at: "2024-03-02 11:00:00", created_by: "admin" },
+    { id: "tx-11", pool_id: "pool-3", project_id: null, investor_id: "pool-2", type: "capital_call", direction: "in", amount: 5000000, date: "2024-03-02", description: "收到大池B实缴", reference_no: "TR-20240302-01", attachment_url: null, created_at: "2024-03-02 11:00:00", created_by: "admin" },
     // Project 3 Investments (1000w from pool-1, 2000w from inv-3)
     { id: "tx-12", pool_id: "pool-1", project_id: "proj-3", investor_id: "pool-1", type: "investment", direction: "out", amount: 10000000, date: "2024-04-15", description: "大池A向机器人项目打款", reference_no: "PAY-20240415-01", attachment_url: null, created_at: "2024-04-15 14:00:00", created_by: "admin" },
     { id: "tx-13", pool_id: null, project_id: "proj-3", investor_id: "inv-3", type: "investment", direction: "out", amount: 20000000, date: "2024-04-16", description: "未来资本直投机器人项目", reference_no: "PAY-20240416-01", attachment_url: null, created_at: "2024-04-16 10:00:00", created_by: "admin" },
@@ -285,26 +284,6 @@ function simulateSQL(sql, params) {
               pool_name: pool ? pool.name : "未知资金池"
             };
           });
-        resolve(JSON.parse(JSON.stringify(result)));
-        return;
-      }
-
-      // 6. 获取池间投资关系
-      if (normalizedSql.includes("from pool_investments")) {
-        let result = [...mockDb.pool_investments];
-        if (normalizedSql.includes("where pi.parent_pool_id = ?") || normalizedSql.includes("parent_pool_id = ?")) {
-          const pid = params[0];
-          result = result.filter(pi => pi.parent_pool_id === pid).map(pi => {
-            const childPool = mockDb.pools.find(p => p.id === pi.child_pool_id);
-            return { ...pi, child_pool_name: childPool ? childPool.name : "未知子池" };
-          });
-        } else if (normalizedSql.includes("where pi.child_pool_id = ?") || normalizedSql.includes("child_pool_id = ?")) {
-          const cid = params[0];
-          result = result.filter(pi => pi.child_pool_id === cid).map(pi => {
-            const parentPool = mockDb.pools.find(p => p.id === pi.parent_pool_id);
-            return { ...pi, parent_pool_name: parentPool ? parentPool.name : "未知母池" };
-          });
-        }
         resolve(JSON.parse(JSON.stringify(result)));
         return;
       }
@@ -740,13 +719,6 @@ function simulateSQL(sql, params) {
       if (normalizedSql.startsWith("delete from pool_members")) {
         const [pool_id, investor_id] = params;
         mockDb.pool_members = mockDb.pool_members.filter(pm => !(pm.pool_id === pool_id && pm.investor_id === investor_id));
-        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
-        return;
-      }
-
-      if (normalizedSql.startsWith("delete from pool_investments")) {
-        const [id] = params;
-        mockDb.pool_investments = mockDb.pool_investments.filter(pi => pi.id !== id);
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
         return;
       }

@@ -235,7 +235,6 @@ export function Distribution() {
       {/* 头部说明 */}
       <div>
         <h2>收益分配计算器</h2>
-        <p>输入待分配总额，系统通过 **递归 SQL 算法** 穿透多级池间出资关系，计算每位个人/机构投资人的最终有效份额，并完成一键划拨分红。</p>
       </div>
 
       <div style={styles.contentGrid}>

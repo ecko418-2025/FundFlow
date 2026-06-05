@@ -17,8 +17,10 @@ export function useDistribution() {
     `;
     const params = [];
     if (poolId) {
-      sql += ` WHERE d.pool_id = ?`;
-      params.push(poolId);
+      sql += ` WHERE d.pool_id = ? 
+                 OR d.project_id IN (SELECT id FROM projects WHERE pool_id = ?)
+                 OR d.id IN (SELECT distribution_id FROM distribution_items WHERE investor_id = ?)`;
+      params.push(poolId, poolId, poolId);
     }
     sql += ` ORDER BY d.distribution_date DESC, d.created_at DESC`;
     return await querySQL(sql, params);
@@ -45,7 +47,8 @@ export function useDistribution() {
     setLoading(true);
     setError(null);
     try {
-      const distId = `dist-${Date.now()}`;
+      const entropy = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const distId = `DIST-${Date.now()}-${entropy}`;
       
       // 1. 插入分配主表
       const sqlInsertDist = `
@@ -66,7 +69,7 @@ export function useDistribution() {
 
       // 2. 插入分配明细项
       for (const item of items) {
-        const itemId = `di-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        const itemId = `DI-${Date.now()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
         const sqlInsertItem = `
           INSERT INTO distribution_items (
             id, distribution_id, investor_id, direct_share_pct, indirect_share_pct, effective_share_pct, amount

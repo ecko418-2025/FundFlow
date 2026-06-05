@@ -258,17 +258,6 @@ export function Pools() {
             <Pencil size={14} />
             <span>编辑</span>
           </button>
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/admin/pools/${v}`);
-            }}
-            className="btn-secondary"
-            style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
-          >
-            <Eye size={14} />
-            <span>详情账本</span>
-          </button>
         </div>
       )
     }
@@ -280,7 +269,6 @@ export function Pools() {
       <div style={styles.pageHeader}>
         <div>
           <h2>资金池管理</h2>
-          <p>录入各层级实体池子，配置大池向小池投资折算比例。</p>
         </div>
         <div style={styles.actionGroup}>
           <button onClick={handleOpenNewPool} className="btn-primary" style={{ gap: "6px" }}>

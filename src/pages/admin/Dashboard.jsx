@@ -44,7 +44,7 @@ export function Dashboard() {
       setTxLoading(true);
       try {
         const data = await getTransactions();
-        setRecentTx(data.slice(0, 5)); // 仅展示最近 5 条
+        setRecentTx(data); 
       } catch (err) {
         console.error("加载面板流水失败", err);
       } finally {
@@ -86,7 +86,17 @@ export function Dashboard() {
     { month: "6月", "管理规模": Number(aumInWan.toFixed(2)) },
   ];
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const paginatedTxs = React.useMemo(() => {
+    return recentTx.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [recentTx, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(recentTx.length / pageSize);
+
   const txHeaders = [
+    { key: "id", label: "流水编号", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>{v}</span> },
     { key: "date", label: "日期", render: (v) => formatDate(v) },
     { 
       key: "sourceName", 
@@ -95,9 +105,10 @@ export function Dashboard() {
         let name = "未知";
         if (row.type === "capital_call") name = row.investor_name;
         else if (row.type === "investment") name = row.investor_name || row.pool_name;
-        else if (row.type === "return" || row.type === "distribution") name = row.project_name;
+        else if (row.type === "pool_investment") name = row.pool_name;
         else if (row.type === "pool_transfer_out") name = row.pool_name;
         else if (row.type === "pool_transfer_in") name = row.related_pool_name;
+        else if (row.type === "return" || row.type === "distribution") name = row.project_name;
         else name = row.direction === "in" ? "外部来源" : (row.pool_name || "未知");
         
         return <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{name || "未知"}</span>;
@@ -110,9 +121,11 @@ export function Dashboard() {
         let name = "未知";
         if (row.type === "capital_call") name = row.pool_name;
         else if (row.type === "investment") name = row.project_name;
-        else if (row.type === "return" || row.type === "distribution") name = row.investor_name || row.pool_name;
-        else if (row.type === "pool_transfer_out") name = row.related_pool_name;
+        else if (row.type === "pool_investment") name = row.related_pool_name;
         else if (row.type === "pool_transfer_in") name = row.pool_name;
+        else if (row.type === "pool_transfer_out") name = row.related_pool_name;
+        else if (row.type === "return") name = row.investor_name || row.pool_name;
+        else if (row.type === "distribution") name = row.investor_name || row.pool_name;
         else name = row.direction === "in" ? (row.pool_name || "未知") : "外部去向";
         
         return <span style={{ fontWeight: 500, color: "var(--text-primary)" }}>{name || "未知"}</span>;
@@ -123,19 +136,17 @@ export function Dashboard() {
       label: "交易类型", 
       render: (v) => {
         const typeMap = {
-          capital_call: "LP实缴打款",
-          investment: "项目投资",
-          return: "项目回款",
-          distribution: "收益分红",
-          fee: "管理费/支出",
-          pool_transfer_out: "资金池划出",
-          pool_transfer_in: "资金池划入"
+          capital_call: "实缴打款(入)",
+          investment: "项目投资(出)",
+          pool_investment: "母池注资(出)",
+          return: "项目回款(入)",
+          distribution: "收益分红(出)",
+          fee: "管理费/支出"
         };
         const colorMap = {
           capital_call: "warning", // 金色
           investment: "danger", // 红色
-          pool_transfer_out: "default", // 灰色
-          pool_transfer_in: "default", // 灰色
+          pool_investment: "danger" // 红色
         };
         const badgeStatus = colorMap[v] || "success"; // 其他全为绿色
         return <Badge text={typeMap[v] || v} status={badgeStatus} />;
@@ -151,6 +162,7 @@ export function Dashboard() {
         </span>
       )
     },
+    { key: "reference_no", label: "凭证号", className: "mono" },
     { key: "description", label: "备注摘要" }
   ];
 
@@ -159,7 +171,6 @@ export function Dashboard() {
       {/* 标题 */}
       <div style={styles.welcome}>
         <h2>欢迎回来，管理员</h2>
-        <p>这是您管理的 贷管家 人民币资金池总体财务健康状况。</p>
       </div>
 
       {/* 统计指标卡片组 */}
@@ -260,12 +271,59 @@ export function Dashboard() {
           <div style={styles.recentHeader}>
             <h3 style={styles.sectionTitle}>系统最近五笔流水变动</h3>
           </div>
-          <div style={{ marginTop: "20px" }}>
+        <div style={{ marginTop: "20px" }}>
             <DataTable 
               headers={txHeaders} 
-              data={recentTx} 
+              data={paginatedTxs} 
               emptyMessage={txLoading ? "加载流水中..." : "最近暂无流水明细"}
             />
+
+            {/* 分页控制栏 */}
+            <div style={styles.paginationRow}>
+              <div style={styles.paginationLeft}>
+                <span>每页显示：</span>
+                <select 
+                  value={pageSize} 
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="form-input"
+                  style={styles.pageSizeSelect}
+                >
+                  <option value={5}>5 条</option>
+                  <option value={10}>10 条</option>
+                  <option value={20}>20 条</option>
+                </select>
+                <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
+                  共 {recentTx.length} 条记录
+                </span>
+              </div>
+              
+              {totalPages > 1 && (
+                <div style={styles.paginationRight}>
+                  <button 
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="btn-secondary"
+                    style={styles.pageBtn}
+                  >
+                    上一页
+                  </button>
+                  <span style={styles.pageIndicator}>
+                    第 {currentPage} / {totalPages} 页
+                  </span>
+                  <button 
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="btn-secondary"
+                    style={styles.pageBtn}
+                  >
+                    下一页
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -319,6 +377,50 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center"
+  },
+  paginationRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "20px",
+    paddingTop: "16px",
+    borderTop: "1px solid var(--border)"
+  },
+  paginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.85rem"
+  },
+  pageSizeSelect: {
+    padding: "4px 8px",
+    fontSize: "0.85rem",
+    width: "90px",
+    height: "32px",
+    borderRadius: "4px",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  paginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  pageBtn: {
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    borderRadius: "4px",
+    cursor: "pointer",
+    height: "32px",
+    display: "flex",
+    alignItems: "center"
+  },
+  pageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    fontWeight: "500"
   }
 };
 export default Dashboard;

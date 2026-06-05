@@ -26,12 +26,13 @@ export function LPDashboard({ user }) {
                 SELECT id AS pool_id, CAST(1.0 AS DECIMAL(16,10)) AS path_multiplier, 0 AS lvl
                 FROM pools WHERE id = ?
                 UNION ALL
-                SELECT pi.parent_pool_id AS pool_id,
-                       CAST(ph.path_multiplier * (pi.share_pct / 100.0) AS DECIMAL(16,10)) AS path_multiplier,
+                SELECT pm.investor_id AS pool_id,
+                       CAST(ph.path_multiplier * (pm.share_pct / 100.0) AS DECIMAL(16,10)) AS path_multiplier,
                        ph.lvl + 1 AS lvl
-                FROM pool_investments pi
-                JOIN pool_hierarchy ph ON pi.child_pool_id = ph.pool_id
-                WHERE pi.status = 'active' AND ph.lvl < 3
+                FROM pool_members pm
+                JOIN investors i ON pm.investor_id = i.id
+                JOIN pool_hierarchy ph ON pm.pool_id = ph.pool_id
+                WHERE pm.status = 'active' AND i.type = 'pool' AND ph.lvl < 3
             )
             SELECT 
                 SUM(CASE WHEN ph.pool_id = ? THEN pm.share_pct ELSE 0.0000 END) AS direct_share,

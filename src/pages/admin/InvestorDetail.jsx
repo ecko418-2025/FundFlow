@@ -29,8 +29,33 @@ export function InvestorDetail() {
         }
         setInvestor(invResult[0]);
 
-        // 2. 参与的资金池
-        const pmResult = await querySQL(`SELECT * FROM pool_members pm WHERE pm.investor_id = ?`, [id]);
+        // 2. 参与的资金池（关联获取名称并计算动态占比）
+        const pmResultRaw = await querySQL(`
+          SELECT pm.*, p.name AS pool_name 
+          FROM pool_members pm 
+          JOIN pools p ON pm.pool_id = p.id 
+          WHERE pm.investor_id = ?
+        `, [id]);
+
+        // 为了显示精准的“池内占比”，需要获取这些池子的实缴总规模
+        const poolIds = pmResultRaw.map(pm => pm.pool_id);
+        const poolAUMs = {};
+        if (poolIds.length > 0) {
+          const aumResults = await querySQL(`
+            SELECT pool_id, SUM(called_amount) as total_called 
+            FROM pool_members 
+            WHERE pool_id IN (${poolIds.map(() => '?').join(',')})
+            GROUP BY pool_id
+          `, poolIds);
+          aumResults.forEach(r => { poolAUMs[r.pool_id] = Number(r.total_called); });
+        }
+
+        const pmResult = pmResultRaw.map(pm => ({
+          ...pm,
+          dynamic_share_pct: poolAUMs[pm.pool_id] > 0 
+            ? (Number(pm.called_amount) / poolAUMs[pm.pool_id] * 100) 
+            : 0
+        }));
         setPoolMembers(pmResult);
 
         // 3. 直投的项目
@@ -39,10 +64,13 @@ export function InvestorDetail() {
 
         // 4. 所有流水
         const txResult = await querySQL(`
-          SELECT t.*, p.name as pool_name, pr.name as project_name 
-          FROM transactions t 
-          LEFT JOIN pools p ON t.pool_id = p.id 
-          LEFT JOIN projects pr ON t.project_id = pr.id 
+          SELECT t.*, p.name AS pool_name, pr.name AS project_name,
+                 i.name AS investor_name, rp.name AS related_pool_name 
+          FROM transactions t
+          LEFT JOIN pools p ON t.pool_id = p.id
+          LEFT JOIN pools rp ON t.related_pool_id = rp.id
+          LEFT JOIN projects pr ON t.project_id = pr.id
+          LEFT JOIN investors i ON t.investor_id = i.id
           WHERE t.investor_id = ? 
           ORDER BY t.date DESC, t.created_at DESC
         `, [id]);
@@ -71,6 +99,15 @@ export function InvestorDetail() {
     loadInvestorDetails();
   }, [id]);
 
+  const [txCurrentPage, setTxCurrentPage] = useState(1);
+  const [txPageSize, setTxPageSize] = useState(10);
+
+  const paginatedTxs = React.useMemo(() => {
+    return transactions.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
+  }, [transactions, txCurrentPage, txPageSize]);
+
+  const txTotalPages = Math.ceil(transactions.length / txPageSize);
+
   if (loading) return <div style={{ padding: 20 }}>正在加载出资方台账...</div>;
   if (error) return <div style={{ padding: 20, color: "var(--accent-red)" }}>{error}</div>;
   if (!investor) return null;
@@ -93,47 +130,89 @@ export function InvestorDetail() {
 
   const totalReturned = txReturned + distReturned;
 
+  const getSourceName = (row) => {
+    if (row.type === "capital_call") return row.investor_name || "";
+    if (row.type === "investment") return row.pool_name || "";
+    if (row.type === "pool_investment") return row.pool_name || "";
+    if (row.type === "pool_transfer_out") return row.pool_name || "";
+    if (row.type === "pool_transfer_in") return row.related_pool_name || "";
+    if (row.type === "return" || row.type === "distribution") return row.project_name || "";
+    return row.direction === "in" ? "外部来源" : (row.pool_name || "");
+  };
+
+  const getTargetName = (row) => {
+    if (row.type === "capital_call") return row.pool_name || "";
+    if (row.type === "investment") return row.project_name || "";
+    if (row.type === "pool_investment") return row.related_pool_name || "";
+    if (row.type === "pool_transfer_in") return row.pool_name || "";
+    if (row.type === "pool_transfer_out") return row.related_pool_name || "";
+    if (row.type === "return") return row.investor_name || row.pool_name || "";
+    if (row.type === "distribution") return row.investor_name || row.pool_name || "";
+    return row.direction === "in" ? (row.pool_name || "") : "外部去向";
+  };
+
   const txHeaders = [
+    { key: "id", label: "流水编号", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>{v}</span> },
     { key: "date", label: "发生日期", render: (v) => formatDate(v) },
     { 
-      key: "pool_id", 
-      label: "关联实体",
-      render: (_, tx) => {
-        if (tx.project_name) return <Badge text={tx.project_name} status="active" />;
-        if (tx.pool_name) return <Badge text={tx.pool_name} status="pre" />;
-        return <span style={{ color: "var(--text-secondary)" }}>-</span>;
+      key: "sourceName", 
+      label: "出账方 (Source)", 
+      render: (_, row) => {
+        const name = getSourceName(row);
+        return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
       }
     },
-    { key: "type", label: "交易类型", render: (v) => {
-        const types = { 
-          'capital_call': '实缴Call款', 
-          'investment': '直投打款', 
-          'return': '本金退回',
-          'pool_distribution': '收益分配'
+    { 
+      key: "targetName", 
+      label: "进账方 (Target)", 
+      render: (_, row) => {
+        const name = getTargetName(row);
+        return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
+      }
+    },
+    { 
+      key: "type", 
+      label: "交易类型", 
+      render: (v) => {
+        const typeMap = {
+          capital_call: "实缴打款(入)",
+          investment: "项目投资(出)",
+          pool_investment: "母池注资(出)",
+          return: "项目回款(入)",
+          distribution: "收益分红(出)",
+          fee: "管理费/支出",
+          adjustment: "人工核校"
         };
-        return <Badge text={types[v] || v} status={v === 'return' || v.includes('distribution') ? 'exited' : 'active'} />;
-    }},
+        const colorMap = {
+          capital_call: "warning", // 金色
+          investment: "danger", // 红色
+          pool_investment: "danger", 
+          return: "success",
+          distribution: "success",
+        };
+        const badgeStatus = colorMap[v] || "default";
+        return <Badge text={typeMap[v] || v} status={badgeStatus} />;
+      }
+    },
     { 
       key: "amount", 
       label: "金额", 
-      className: "mono",
-      render: (v, tx) => (
-        <span style={{ 
-          color: tx.direction === 'in' ? 'var(--accent-green)' : 'var(--accent-red)',
-          fontWeight: 600
-        }}>
-          {tx.direction === 'in' ? '+' : '-'}{formatCNY(v)}
+      align: "right",
+      render: (v, row) => (
+        <span className={`mono amt-bold ${row.direction === 'in' ? 'amt-in' : 'amt-out'}`}>
+          {row.direction === 'in' ? '+' : '-'}{formatCNY(v, false)}
         </span>
       )
     },
+    { key: "reference_no", label: "凭证号", className: "mono" },
     { key: "description", label: "摘要说明" }
   ];
 
   const poolHeaders = [
-    { key: "pool_name", label: "入账资金池", render: (v, pm) => <Link to={`/admin/pools/${pm.pool_id}`} className="text-link" style={{ fontWeight: 600 }}>{v}</Link> },
-    { key: "committed_amount", label: "认缴额度", className: "mono", render: (v) => formatCNY(v) },
-    { key: "called_amount", label: "已实缴", className: "mono", render: (v) => formatCNY(v) },
-    { key: "share_pct", label: "池内占比", className: "mono", render: (v) => `${Number(v).toFixed(2)}%` },
+    { key: "pool_name", label: "所属资金池", render: (v, pm) => <Link to={`/admin/pools/${pm.pool_id}`} className="text-link" style={{ fontWeight: 600 }}>{v}</Link> },
+    { key: "committed_amount", label: "认缴参考额", render: (v) => formatCNY(v, false) },
+    { key: "called_amount", label: "累计实缴额", className: "amt-in", render: (v) => <span className="mono amt-bold">{formatCNY(v, false)}</span> },
+    { key: "dynamic_share_pct", label: "实时池内占比", render: (v) => <span className="badge badge-warning">{v.toFixed(4)}%</span> },
     { key: "status", label: "状态", render: (v) => <Badge text={v === 'active' ? '正常在投' : '已退出'} status={v} /> }
   ];
 
@@ -276,7 +355,57 @@ export function InvestorDetail() {
           )}
 
           {activeTab === "transactions" && (
-            <DataTable headers={txHeaders} data={transactions} emptyMessage="该出资方暂无核心资金进出流水" />
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <DataTable headers={txHeaders} data={paginatedTxs} emptyMessage="该出资方暂无核心资金进出流水" />
+              
+              {/* 分页控制栏 */}
+              <div style={styles.paginationRow}>
+                <div style={styles.paginationLeft}>
+                  <span>每页显示：</span>
+                  <select 
+                    value={txPageSize} 
+                    onChange={(e) => {
+                      setTxPageSize(Number(e.target.value));
+                      setTxCurrentPage(1);
+                    }}
+                    className="form-input"
+                    style={styles.pageSizeSelect}
+                  >
+                    <option value={5}>5 条</option>
+                    <option value={10}>10 条</option>
+                    <option value={20}>20 条</option>
+                    <option value={50}>50 条</option>
+                  </select>
+                  <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
+                    共 {transactions.length} 条记录
+                  </span>
+                </div>
+                
+                {txTotalPages > 1 && (
+                  <div style={styles.paginationRight}>
+                    <button 
+                      onClick={() => setTxCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={txCurrentPage === 1}
+                      className="btn-secondary"
+                      style={styles.pageBtn}
+                    >
+                      上一页
+                    </button>
+                    <span style={styles.pageIndicator}>
+                      第 {txCurrentPage} / {txTotalPages} 页
+                    </span>
+                    <button 
+                      onClick={() => setTxCurrentPage(prev => Math.min(prev + 1, txTotalPages))}
+                      disabled={txCurrentPage === txTotalPages}
+                      className="btn-secondary"
+                      style={styles.pageBtn}
+                    >
+                      下一页
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {activeTab === "distributions" && (
@@ -356,6 +485,50 @@ const styles = {
   infoValue: {
     fontSize: "15px",
     color: "var(--text)"
+  },
+  paginationRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "20px",
+    paddingTop: "16px",
+    borderTop: "1px solid var(--border)"
+  },
+  paginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.85rem"
+  },
+  pageSizeSelect: {
+    padding: "4px 8px",
+    fontSize: "0.85rem",
+    width: "90px",
+    height: "32px",
+    borderRadius: "4px",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  paginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  pageBtn: {
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    borderRadius: "4px",
+    cursor: "pointer",
+    height: "32px",
+    display: "flex",
+    alignItems: "center"
+  },
+  pageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    fontWeight: "500"
   }
 };
 export default InvestorDetail;

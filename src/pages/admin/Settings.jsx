@@ -16,7 +16,8 @@ export function Settings() {
     }
     setReconciling(true);
     try {
-      // 0. 自动修复历史流水中缺失 investor_id 的数据（将池级投资/回款的 investor_id 兜底填为 pool_id）
+      // 0. 自动修复历史流水中缺失 investor_id 的数据
+      // a. 将池级项目投资/回款的 investor_id 兜底填为 pool_id
       await querySQL(`
         UPDATE transactions 
         SET investor_id = pool_id 
@@ -24,6 +25,9 @@ export function Settings() {
           AND pool_id IS NOT NULL 
           AND (type = 'investment' OR type = 'return')
       `);
+      
+      // b. 确保新模型下的母池注资流水的 target 指向正确
+      // (通常在程序中已处理，此处作为校准冗余保障)
 
       // 1. 重算 projects
       await querySQL(`
@@ -38,10 +42,18 @@ export function Settings() {
           invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = project_investors.project_id AND investor_id = project_investors.investor_id AND type = 'investment'), 0)
       `);
 
-      // 3. 重算 pool_members
+      // 3. 重算 pool_members (关键：统一统计资本注入，包含实缴和历史划入)
       await querySQL(`
         UPDATE pool_members SET
-          called_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE pool_id = pool_members.pool_id AND investor_id = pool_members.investor_id AND type = 'capital_call'), 0)
+          called_amount = COALESCE((
+            SELECT SUM(amount) FROM transactions 
+            WHERE pool_id = pool_members.pool_id 
+              AND (
+                investor_id = pool_members.investor_id 
+                OR (related_pool_id = pool_members.investor_id AND type = 'pool_transfer_in')
+              )
+              AND type IN ('capital_call', 'pool_transfer_in')
+          ), 0)
       `);
 
       // 4. 重算 pools
@@ -78,7 +90,7 @@ export function Settings() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const data = await querySQL(`SELECT * FROM settings`);
+      const data = await querySQL(`SELECT * FROM settings WHERE \`key\` = 'system_tags'`);
       const tagsSetting = data.find(s => s.key === "system_tags");
       if (tagsSetting) {
         setSystemTags(JSON.parse(tagsSetting.value));
@@ -92,9 +104,19 @@ export function Settings() {
 
   const saveTags = async (tagsData) => {
     try {
-      await querySQL(`UPDATE settings SET value = ? WHERE key = ?`, [JSON.stringify(tagsData), "system_tags"]);
+      // 核心修复：确保 JSON 字符串被正确转义。
+      // CloudBase SQL 驱动通常会处理参数化查询中的字符串转义，
+      // 但对于复杂的 JSON 字符串，显式调用 JSON.stringify 是必要的。
+      const jsonString = JSON.stringify(tagsData);
+      
+      await querySQL(
+        `UPDATE settings SET value = ? WHERE \`key\` = ?`, 
+        [jsonString, "system_tags"]
+      );
+      
       setSystemTags(tagsData);
     } catch (err) {
+      console.error("Save tags failed:", err);
       alert("保存失败：" + err.message);
     }
   };

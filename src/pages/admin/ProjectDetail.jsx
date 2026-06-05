@@ -38,6 +38,18 @@ export function ProjectDetail() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
 
+  // 编辑项目相关状态
+  const [systemTags, setSystemTags] = useState([]);
+  const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+  const [editProjName, setEditProjName] = useState("");
+  const [editProjContractNo, setEditProjContractNo] = useState("");
+  const [editProjStatus, setEditProjStatus] = useState("pre");
+  const [editProjCommitted, setEditProjCommitted] = useState("");
+  const [editProjStartDate, setEditProjStartDate] = useState("");
+  const [editProjEndDate, setEditProjEndDate] = useState("");
+  const [editProjTags, setEditProjTags] = useState("");
+  const [editProjDesc, setEditProjDesc] = useState("");
+
   // 添加出资人弹窗状态
   const [isAddInvestorOpen, setIsAddInvestorOpen] = useState(false);
   const [newInvestors, setNewInvestors] = useState(
@@ -80,9 +92,10 @@ export function ProjectDetail() {
 
       const txResult = await querySQL(
         `SELECT t.*, p.name AS pool_name, pr.name AS project_name,
-                i.name AS investor_name
+                i.name AS investor_name, rp.name AS related_pool_name 
          FROM transactions t
          LEFT JOIN pools p ON t.pool_id = p.id
+         LEFT JOIN pools rp ON t.related_pool_id = rp.id
          LEFT JOIN projects pr ON t.project_id = pr.id
          LEFT JOIN investors i ON t.investor_id = i.id
          WHERE t.project_id = ?
@@ -128,6 +141,13 @@ export function ProjectDetail() {
         ...poolResult.map(p => ({ id: p.id, name: p.name, type: 'pool', category: 'pool' }))
       ];
       setAllInvestors(combined);
+
+      // 加载系统配置的分类标签
+      const settingsData = await querySQL(`SELECT * FROM settings`);
+      const tagsSetting = settingsData.find(s => s.key === "system_tags");
+      if (tagsSetting) {
+        setSystemTags(JSON.parse(tagsSetting.value));
+      }
     } catch (err) {
       setError(err.message || "获取项目详情失败");
     } finally {
@@ -143,11 +163,10 @@ export function ProjectDetail() {
     const map = {
       capital_call: "in",
       investment: "out",
+      pool_investment: "out",
       return: "in",
       distribution: "out",
       fee: "out",
-      pool_transfer_out: "out",
-      pool_transfer_in: "in",
       adjustment: "in"
     };
     return map[t] || "in";
@@ -250,6 +269,69 @@ export function ProjectDetail() {
     }
   };
 
+  const handleOpenEditProject = () => {
+    if (!project) return;
+    setEditProjName(project.name);
+    setEditProjContractNo(project.contract_no || "");
+    setEditProjStatus(project.status || "pre");
+    setEditProjCommitted(String(project.committed_amount));
+    
+    let tagsStr = "";
+    if (project.tags) {
+      try {
+        const parsed = typeof project.tags === "string" ? JSON.parse(project.tags) : project.tags;
+        if (Array.isArray(parsed)) {
+          tagsStr = parsed.join(", ");
+        }
+      } catch (e) {
+        tagsStr = String(project.tags);
+      }
+    }
+    setEditProjTags(tagsStr);
+    setEditProjStartDate(project.start_date ? project.start_date.slice(0, 10) : "");
+    setEditProjEndDate(project.expected_end_date ? project.expected_end_date.slice(0, 10) : "");
+    setEditProjDesc(project.description || "");
+    setIsEditProjectOpen(true);
+  };
+
+  const handleEditProjectSubmit = async (e) => {
+    e.preventDefault();
+    if (!editProjName || !editProjCommitted || !editProjStartDate || !editProjEndDate) {
+      alert("请填写所有必填项");
+      return;
+    }
+    if (editProjStartDate && editProjEndDate && new Date(editProjEndDate) < new Date(editProjStartDate)) {
+      alert("结束日期不能早于起始日期！");
+      return;
+    }
+    try {
+      const tagsArray = editProjTags ? editProjTags.split(/[,，]/).map(t => t.trim()).filter(Boolean) : [];
+      const sql = `
+        UPDATE projects
+        SET name = ?, code = ?, status = ?, committed_amount = ?,
+            description = ?, tags = ?, start_date = ?, expected_end_date = ?, contract_no = ?
+        WHERE id = ?
+      `;
+      await querySQL(sql, [
+        editProjName,
+        project.id,
+        editProjStatus,
+        Number(editProjCommitted),
+        editProjDesc,
+        JSON.stringify(tagsArray),
+        editProjStartDate || null,
+        editProjEndDate || null,
+        editProjContractNo || "",
+        project.id
+      ]);
+      setIsEditProjectOpen(false);
+      await loadProjectDetails();
+      alert("项目信息已更新！");
+    } catch (err) {
+      alert("更新失败：" + err.message);
+    }
+  };
+
   const handleDeleteProjectInvestor = async (e, investor) => {
     e.stopPropagation();
     if (Number(investor.invested_amount) > 0) {
@@ -271,6 +353,15 @@ export function ProjectDetail() {
     }
   };
 
+  const [txCurrentPage, setTxCurrentPage] = useState(1);
+  const [txPageSize, setTxPageSize] = useState(10);
+
+  const paginatedTxs = React.useMemo(() => {
+    return txs.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
+  }, [txs, txCurrentPage, txPageSize]);
+
+  const txTotalPages = Math.ceil(txs.length / txPageSize);
+
   if (loading) return <div style={styles.loading}>加载中...</div>;
   if (error) return <div style={styles.error}><Info color="red" /> {error}</div>;
   if (!project) return null;
@@ -282,27 +373,63 @@ export function ProjectDetail() {
   // 全项目已到账总额（用于动态持股比例计算）
   const totalProjectInvested = projectInvestors.reduce((s, pi) => s + Number(pi.invested_amount || 0), 0);
 
+  const getSourceName = (row) => {
+    if (row.type === "capital_call") return row.investor_name || "";
+    if (row.type === "investment") return row.investor_name || row.pool_name || "";
+    if (row.type === "pool_investment") return row.pool_name || "";
+    if (row.type === "pool_transfer_out") return row.pool_name || "";
+    if (row.type === "pool_transfer_in") return row.related_pool_name || "";
+    if (row.type === "return" || row.type === "distribution") return row.project_name || "";
+    return row.direction === "in" ? "外部来源" : (row.pool_name || "");
+  };
+
+  const getTargetName = (row) => {
+    if (row.type === "capital_call") return row.pool_name || "";
+    if (row.type === "investment") return row.project_name || "";
+    if (row.type === "pool_investment") return row.related_pool_name || "";
+    if (row.type === "pool_transfer_in") return row.pool_name || "";
+    if (row.type === "pool_transfer_out") return row.related_pool_name || "";
+    if (row.type === "return") return row.investor_name || row.pool_name || "";
+    if (row.type === "distribution") return row.investor_name || row.pool_name || "";
+    return row.direction === "in" ? (row.pool_name || "") : "外部去向";
+  };
+
   const txHeaders = [
-    { key: "date", label: "交易日期", render: (v) => formatDate(v) },
-    { key: "investor_name", label: "出资人", render: (v) => <span style={{ fontWeight: 600, color: "var(--accent-blue)" }}>{v || "-"}</span> },
+    { key: "id", label: "流水编号", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>{v}</span> },
+    { key: "date", label: "发生日期", render: (v) => formatDate(v) },
+    { 
+      key: "sourceName", 
+      label: "出账方 (Source)", 
+      render: (_, row) => {
+        const name = getSourceName(row);
+        return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
+      }
+    },
+    { 
+      key: "targetName", 
+      label: "进账方 (Target)", 
+      render: (_, row) => {
+        const name = getTargetName(row);
+        return <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{name || "未知"}</span>;
+      }
+    },
     { 
       key: "type", 
       label: "交易类型", 
       render: (v) => {
         const typeMap = {
-          investment: "项目打款投入",
-          return: "项目回款",
-          capital_call: "LP实缴打款",
-          distribution: "收益分配",
-          fee: "费用支出",
-          pool_transfer_out: "资金池划出",
-          pool_transfer_in: "资金池划入",
-          adjustment: "账务调整",
+          capital_call: "实缴打款(入)",
+          investment: "项目投资(出)",
+          pool_investment: "母池注资(出)",
+          return: "项目回款(入)",
+          distribution: "收益分红(出)",
+          fee: "管理费/支出",
+          adjustment: "人工核校"
         };
-        return typeMap[v] || v;
+        const badgeStatus = { capital_call: "warning", investment: "danger", pool_investment: "danger" }[v] || "success";
+        return <Badge text={typeMap[v] || v} status={badgeStatus} />;
       }
     },
-    { key: "direction", label: "资金流向", render: (v) => <Badge text={v === 'in' ? '流入池' : '流出池'} status={v} /> },
     { 
       key: "amount", 
       label: "金额", 
@@ -318,24 +445,27 @@ export function ProjectDetail() {
   ];
 
   const investorHeaders = [
-    { key: "investor_name", label: "投资者名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { key: "investor_type", label: "类型", render: (v) => v === "individual" ? "个人" : "机构/基金" },
+    { key: "investor_name", label: "出资方名称", render: (v, row) => (
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <span style={{ fontWeight: 600 }}>{row.investor_type === 'pool' ? `🏦 ${v}` : (row.investor_type === 'individual' ? `👤 ${v}` : `🏢 ${v}`)}</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+          {row.investor_type === 'pool' ? '机构母池' : (row.investor_type === 'individual' ? '个人 LP' : '机构 LP')}
+        </span>
+      </div>
+    )},
     { key: "committed_amount", label: "认缴参考额", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)" }}>{formatCNY(v, false)}</span> },
-    { key: "invested_amount", label: "实缴金额", render: (v) => <span className="mono" style={{ color: "var(--accent-green)", fontWeight: 700 }}>{formatCNY(v, false)}</span> },
+    { key: "invested_amount", label: "累计实缴额", render: (v) => <span className="mono" style={{ color: "var(--accent-green)", fontWeight: 700 }}>{formatCNY(v, false)}</span> },
     {
-      key: "invested_amount",
-      label: "实缴持股比例",
+      key: "invested_amount_pct",
+      label: "当前实缴比例",
       align: "right",
-      render: (v) => {
-        const pct = totalProjectInvested > 0 ? (Number(v || 0) / totalProjectInvested * 100) : 0;
+      render: (_, row) => {
+        const pct = totalProjectInvested > 0 ? (Number(row.invested_amount || 0) / totalProjectInvested * 100) : 0;
         return (
           <div style={{ textAlign: "right" }}>
-            <span className="mono amt-bold" style={{ color: "var(--accent-gold)" }}>
+            <span className="badge badge-warning" style={{ fontWeight: 700 }}>
               {pct.toFixed(4)}%
             </span>
-            {totalProjectInvested === 0 && (
-              <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)", display: "block" }}>待资金到账后计算</span>
-            )}
           </div>
         );
       }
@@ -352,13 +482,13 @@ export function ProjectDetail() {
             style={{ padding: "5px 10px", fontSize: "0.78rem", gap: "4px" }}
           >
             <Pencil size={12} />
-            <span>编辑认缴</span>
+            <span>编辑</span>
           </button>
           <button
             onClick={(e) => handleDeleteProjectInvestor(e, row)}
             className="btn-secondary"
             style={{ padding: "5px 10px", fontSize: "0.78rem", gap: "4px", color: Number(row.invested_amount) > 0 ? "var(--text-muted)" : "var(--accent-red)", cursor: Number(row.invested_amount) > 0 ? "not-allowed" : "pointer" }}
-            title={Number(row.invested_amount) > 0 ? "已有实缴，不可删除" : "删除出资人"}
+            title={Number(row.invested_amount) > 0 ? "已有实缴，不可删除" : "删除出资方"}
             disabled={Number(row.invested_amount) > 0}
           >
             <Trash2 size={12} />
@@ -395,6 +525,14 @@ export function ProjectDetail() {
             status={project.status} 
           />
           {isExpired && <span className="badge badge-danger" style={{ textTransform: "none" }}>已到期</span>}
+          <button 
+            onClick={handleOpenEditProject}
+            className="btn-secondary"
+            style={{ padding: "6px 12px", fontSize: "0.85rem", gap: "6px", marginLeft: "12px" }}
+          >
+            <Pencil size={14} />
+            <span>编辑项目</span>
+          </button>
         </div>
       </div>
 
@@ -541,33 +679,91 @@ export function ProjectDetail() {
 
         {activeTab === "investors" && (
           <div className="glass-card no-hover" style={{ padding: "20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>个人/机构投资方名单</h3>
-              <button onClick={() => setIsAddInvestorOpen(true)} className="btn-primary" style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}>
-                <Plus size={15} /><span>添加出资方</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>全量项目出资方名单 (含 LP 与母池)</h3>
+              <button onClick={() => setIsAddInvestorOpen(true)} className="btn-primary" style={{ padding: "8px 16px", gap: "6px" }}>
+                <Plus size={16} /><span>登记新出资方</span>
               </button>
             </div>
-            <DataTable 
-              headers={investorHeaders} 
-              data={projectInvestors.filter(pi => pi.investor_type !== 'pool')} 
-              emptyMessage="当前暂无真实的个人或机构出资记录，点击右上角添加" 
-            />
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "32px", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>内部资金池作为直接出资方</h3>
+            
+            <div style={{ marginBottom: "20px", padding: "16px", background: "var(--surface-secondary)", borderRadius: "10px", display: "flex", gap: "40px", border: "1px solid var(--border)" }}>
+              <div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginBottom: "4px" }}>全项目当前累计实缴到位</div>
+                <div className="mono amt-bold" style={{ color: "var(--accent-green)", fontSize: "1.2rem" }}>{formatCNY(totalProjectInvested, false)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginBottom: "4px" }}>认缴登记总额目标</div>
+                <div className="mono" style={{ fontWeight: 700, fontSize: "1.2rem" }}>{formatCNY(projectInvestors.reduce((sum, pi) => sum + Number(pi.committed_amount || 0), 0), false)}</div>
+              </div>
             </div>
+
             <DataTable 
               headers={investorHeaders} 
-              data={projectInvestors.filter(pi => pi.investor_type === 'pool')} 
-              emptyMessage="暂无内部资金池作为出资方" 
+              data={projectInvestors} 
+              emptyMessage="当前项目暂无出资人记录，请点击右上角添加" 
+              onRowClick={(row) => {
+                if (row.investor_type === 'pool') {
+                  navigate(`/admin/pools/${row.investor_id}`);
+                } else {
+                  navigate(`/admin/investors/${row.investor_id}`);
+                }
+              }}
             />
           </div>
         )}
 
         {/* 4. 流水 Tab */}
         {activeTab === "ledger" && (
-          <div className="glass-card no-hover">
-            <DataTable headers={txHeaders} data={txs} emptyMessage="当前项目暂无投资打款或回款流水变动" />
+          <div className="glass-card no-hover" style={{ padding: "20px" }}>
+            <DataTable headers={txHeaders} data={paginatedTxs} emptyMessage="当前项目暂无投资打款或回款流水变动" />
+
+            {/* 分页控制栏 */}
+            <div style={styles.paginationRow}>
+              <div style={styles.paginationLeft}>
+                <span>每页显示：</span>
+                <select 
+                  value={txPageSize} 
+                  onChange={(e) => {
+                    setTxPageSize(Number(e.target.value));
+                    setTxCurrentPage(1);
+                  }}
+                  className="form-input"
+                  style={styles.pageSizeSelect}
+                >
+                  <option value={5}>5 条</option>
+                  <option value={10}>10 条</option>
+                  <option value={20}>20 条</option>
+                  <option value={50}>50 条</option>
+                </select>
+                <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
+                  共 {txs.length} 条记录
+                </span>
+              </div>
+              
+              {txTotalPages > 1 && (
+                <div style={styles.paginationRight}>
+                  <button 
+                    onClick={() => setTxCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={txCurrentPage === 1}
+                    className="btn-secondary"
+                    style={styles.pageBtn}
+                  >
+                    上一页
+                  </button>
+                  <span style={styles.pageIndicator}>
+                    第 {txCurrentPage} / {txTotalPages} 页
+                  </span>
+                  <button 
+                    onClick={() => setTxCurrentPage(prev => Math.min(prev + 1, txTotalPages))}
+                    disabled={txCurrentPage === txTotalPages}
+                    className="btn-secondary"
+                    style={styles.pageBtn}
+                  >
+                    下一页
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -657,13 +853,12 @@ export function ProjectDetail() {
               <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
                 <label className="form-label">交易类型 (系统定义) *</label>
                 <select value={customType} onChange={(e) => setCustomType(e.target.value)} className="form-input" required style={{ height: "42px" }}>
-                  <option value="capital_call">LP实缴打款</option>
+                  <option value="capital_call">实缴打款</option>
                   <option value="investment">项目投资</option>
+                  <option value="pool_investment">母池注资</option>
                   <option value="return">项目回款</option>
                   <option value="distribution">收益分红</option>
                   <option value="fee">管理费/支出</option>
-                  <option value="pool_transfer_out">资金池划出</option>
-                  <option value="pool_transfer_in">资金池划入</option>
                   <option value="adjustment">人工核校</option>
                 </select>
               </div>
@@ -821,6 +1016,130 @@ export function ProjectDetail() {
           </form>
         )}
       </Modal>
+
+      {/* 弹窗：编辑项目 */}
+      <Modal isOpen={isEditProjectOpen} onClose={() => setIsEditProjectOpen(false)} title={`编辑项目：${project?.name || ""}`}>
+        <form onSubmit={handleEditProjectSubmit} style={styles.form}>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">项目 ID</label>
+              <input 
+                type="text" 
+                disabled
+                value={project?.id || ""}
+                className="form-input mono"
+                style={{ backgroundColor: "var(--background)", cursor: "not-allowed" }}
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">相关合同编号</label>
+              <input 
+                type="text" 
+                value={editProjContractNo}
+                onChange={(e) => setEditProjContractNo(e.target.value)}
+                placeholder="如：HT-2024-001"
+                className="form-input mono"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 2, marginBottom: "12px" }}>
+              <label className="form-label">项目名称 *</label>
+              <input type="text" required value={editProjName} onChange={(e) => setEditProjName(e.target.value)} className="form-input" />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">立项阶段 *</label>
+              <select value={editProjStatus} onChange={(e) => setEditProjStatus(e.target.value)} className="form-input" style={{ height: "42px" }}>
+                <option value="pre">投前储备阶段</option>
+                <option value="active">存续运营阶段</option>
+                <option value="exited">完全退出阶段</option>
+                <option value="archived">项目归档阶段</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">计划出资规模 *</label>
+              <AmountInput value={editProjCommitted} onChange={setEditProjCommitted} placeholder="请输入计划出资额（元）" />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">运行起始日期</label>
+              <input type="date" value={editProjStartDate} onChange={(e) => setEditProjStartDate(e.target.value)} className="form-input mono" />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">预计结束日期</label>
+              <input type="date" value={editProjEndDate} onChange={(e) => setEditProjEndDate(e.target.value)} className="form-input mono" />
+            </div>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: "12px" }}>
+            <label className="form-label" style={{ marginBottom: "4px" }}>项目分类标签</label>
+            {systemTags.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "6px" }}>
+                {systemTags.map(cat => (
+                  <div key={cat.id} style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", fontSize: "0.8rem" }}>
+                    <span style={{ color: "var(--text-secondary)", minWidth: "70px" }}>{cat.name}:</span>
+                    {cat.tags && cat.tags.map(tag => {
+                      const currentTags = editProjTags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+                      const isSelected = currentTags.includes(tag);
+                      return (
+                        <span 
+                          key={tag} 
+                          onClick={() => {
+                            if (isSelected) {
+                              setEditProjTags(currentTags.filter(t => t !== tag).join(", "));
+                            } else {
+                              setEditProjTags([...currentTags, tag].join(", "));
+                            }
+                          }}
+                          className={`badge ${isSelected ? 'badge-active' : ''}`}
+                          style={{ 
+                            cursor: "pointer", 
+                            fontSize: "0.75rem",
+                            padding: "2px 6px",
+                            border: isSelected ? "none" : `1px solid ${cat.color}40`, 
+                            backgroundColor: isSelected ? cat.color : "transparent", 
+                            color: isSelected ? "#fff" : cat.color 
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+            <input 
+              type="text" 
+              value={editProjTags}
+              onChange={(e) => setEditProjTags(e.target.value)}
+              placeholder="自定义标签用逗号隔开，或者点击上方已有标签快速添加"
+              className="form-input"
+              style={{ height: "36px", fontSize: "0.85rem" }}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: "12px" }}>
+            <label className="form-label">项目详情描述</label>
+            <textarea 
+              value={editProjDesc}
+              onChange={(e) => setEditProjDesc(e.target.value)}
+              placeholder="详细描述项目主营业务、估值、主要回款约定..."
+              className="form-input"
+              rows={2}
+              style={{ resize: "none" }}
+            />
+          </div>
+
+          <div style={styles.modalActions}>
+            <button type="button" onClick={() => setIsEditProjectOpen(false)} className="btn-secondary">取消</button>
+            <button type="submit" className="btn-primary">保存修改</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -959,6 +1278,50 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center"
+  },
+  paginationRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "20px",
+    paddingTop: "16px",
+    borderTop: "1px solid var(--border)"
+  },
+  paginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.85rem"
+  },
+  pageSizeSelect: {
+    padding: "4px 8px",
+    fontSize: "0.85rem",
+    width: "90px",
+    height: "32px",
+    borderRadius: "4px",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  paginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  pageBtn: {
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    borderRadius: "4px",
+    cursor: "pointer",
+    height: "32px",
+    display: "flex",
+    alignItems: "center"
+  },
+  pageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.85rem",
+    fontWeight: "500"
   },
   modalActions: {
     display: "flex",

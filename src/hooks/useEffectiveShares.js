@@ -23,14 +23,16 @@ export function useEffectiveShares() {
 
             UNION ALL
 
-            -- 2. 递归部分：查找投资了当前层级池子的 active 母池，层数递增，乘数累乘
+            -- 2. 递归部分：查找投资了当前层级池子的 active 母池 (通过 pool_members 关联，且 investor 的 type 为 'pool')
             SELECT 
-                pi.parent_pool_id AS pool_id,
-                CAST(ph.path_multiplier * (pi.share_pct / 100.0) AS DECIMAL(16,10)) AS path_multiplier,
+                pm.investor_id AS pool_id,
+                CAST(ph.path_multiplier * (pm.share_pct / 100.0) AS DECIMAL(16,10)) AS path_multiplier,
                 ph.lvl + 1 AS lvl
-            FROM pool_investments pi
-            JOIN pool_hierarchy ph ON pi.child_pool_id = ph.pool_id
-            WHERE pi.status = 'active'
+            FROM pool_members pm
+            JOIN investors i ON pm.investor_id = i.id
+            JOIN pool_hierarchy ph ON pm.pool_id = ph.pool_id
+            WHERE pm.status = 'active'
+              AND i.type = 'pool'
               AND ph.lvl < 3 -- 限制最多穿透 3 层（孙池→子池→母池）
         )
         -- 3. 汇总所有持股路径，按投资者维度进行累加

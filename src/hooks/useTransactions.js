@@ -49,7 +49,10 @@ export function useTransactions() {
     setLoading(true);
     setError(null);
     try {
-      const txId = `tx-${Date.now()}`;
+      // 增强型流水 ID：TX + 年月日 + 6位高精度随机码
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const entropy = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const txId = `TX${dateStr}${entropy}`;
       
       // 1. 插入流水记录
       const sqlInsert = `
@@ -83,7 +86,23 @@ export function useTransactions() {
         );
       }
 
-      // 3. 重算项目的 invested_amount/returned_amount 以及 project_investors 的 invested_amount
+      // 3. 自动补全缺失的出资方名单 (项目直投)
+      if (tx.projectId && tx.investorId && tx.type === 'investment') {
+        const piExisting = await querySQL(
+          "SELECT id FROM project_investors WHERE project_id = ? AND investor_id = ?",
+          [tx.projectId, tx.investorId]
+        );
+        if (piExisting.length === 0) {
+          const newPiId = `PI-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+          await querySQL(
+            `INSERT INTO project_investors (id, project_id, investor_id, committed_amount, invested_amount)
+             VALUES (?, ?, ?, 0, 0)`,
+            [newPiId, tx.projectId, tx.investorId]
+          );
+        }
+      }
+
+      // 4. 重算项目的 invested_amount/returned_amount 以及 project_investors 的 invested_amount
       if (tx.projectId) {
         await querySQL(
           `UPDATE projects SET
@@ -102,14 +121,42 @@ export function useTransactions() {
         }
       }
 
-      // 4. 如果是出资人实缴(capital_call)，重算 pool_members 中的 called_amount
-      if (tx.type === "capital_call" && tx.poolId && tx.investorId) {
-        await querySQL(
-          `UPDATE pool_members SET
-             called_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE pool_id = ? AND investor_id = ? AND type = 'capital_call'), 0)
-           WHERE pool_id = ? AND investor_id = ?`,
-          [tx.poolId, tx.investorId, tx.poolId, tx.investorId]
-        );
+      // 5. 自动补全缺失的资金池出资方名单 (实缴/划入)
+      if ((tx.type === "capital_call" || tx.type === "pool_transfer_in") && tx.poolId) {
+        const targetInvestorId = tx.investorId || tx.relatedPoolId;
+        if (targetInvestorId) {
+          const pmExisting = await querySQL(
+            "SELECT id FROM pool_members WHERE pool_id = ? AND investor_id = ?",
+            [tx.poolId, targetInvestorId]
+          );
+          if (pmExisting.length === 0) {
+            const newPmId = `PM-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+            await querySQL(
+              `INSERT INTO pool_members (id, pool_id, investor_id, committed_amount, called_amount, share_pct, status)
+               VALUES (?, ?, ?, 0, 0, 0, 'active')`,
+              [newPmId, tx.poolId, targetInvestorId]
+            );
+          }
+        }
+      }
+
+      // 6. 重算 pool_members 中的 called_amount (实缴总额)
+      // 统一模型：统计所有 type 为 capital_call 或 pool_transfer_in 的流水
+      if ((tx.type === "capital_call" || tx.type === "pool_transfer_in") && tx.poolId) {
+        const targetInvestorId = tx.investorId || tx.relatedPoolId;
+        if (targetInvestorId) {
+          await querySQL(
+            `UPDATE pool_members SET
+               called_amount = COALESCE((
+                 SELECT SUM(amount) FROM transactions 
+                 WHERE pool_id = ? 
+                   AND (investor_id = ? OR (related_pool_id = ? AND type = 'pool_transfer_in'))
+                   AND type IN ('capital_call', 'pool_transfer_in')
+               ), 0)
+             WHERE pool_id = ? AND investor_id = ?`,
+            [tx.poolId, targetInvestorId, targetInvestorId, tx.poolId, targetInvestorId]
+          );
+        }
       }
 
       return txId;
@@ -169,14 +216,22 @@ export function useTransactions() {
         }
       }
 
-      // 5. 如果是出资人实缴(capital_call)，重算 pool_members 中的 called_amount
-      if (tx.type === "capital_call" && tx.pool_id && tx.investor_id) {
-        await querySQL(
-          `UPDATE pool_members SET
-             called_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE pool_id = ? AND investor_id = ? AND type = 'capital_call'), 0)
-           WHERE pool_id = ? AND investor_id = ?`,
-          [tx.pool_id, tx.investor_id, tx.pool_id, tx.investor_id]
-        );
+      // 5. 重算 pool_members 中的 called_amount (实缴总额)
+      if ((tx.type === "capital_call" || tx.type === "pool_transfer_in") && tx.pool_id) {
+        const targetInvestorId = tx.investor_id || tx.related_pool_id;
+        if (targetInvestorId) {
+          await querySQL(
+            `UPDATE pool_members SET
+               called_amount = COALESCE((
+                 SELECT SUM(amount) FROM transactions 
+                 WHERE pool_id = ? 
+                   AND (investor_id = ? OR (related_pool_id = ? AND type = 'pool_transfer_in'))
+                   AND type IN ('capital_call', 'pool_transfer_in')
+               ), 0)
+             WHERE pool_id = ? AND investor_id = ?`,
+            [tx.pool_id, targetInvestorId, targetInvestorId, tx.pool_id, targetInvestorId]
+          );
+        }
       }
 
       return true;

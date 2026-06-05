@@ -42,38 +42,24 @@ CREATE TABLE `investors` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- 3. 池-出资方直接持股关系表 (多对多)
+-- 包含个人 LP 以及作为“机构 LP”注资的母资金池
 DROP TABLE IF EXISTS `pool_members`;
 CREATE TABLE `pool_members` (
   `id` VARCHAR(36) NOT NULL COMMENT '关系唯一ID',
   `pool_id` VARCHAR(36) NOT NULL COMMENT '所属资金池ID',
-  `investor_id` VARCHAR(36) NOT NULL COMMENT '出资方ID',
+  `investor_id` VARCHAR(36) NOT NULL COMMENT '出资方ID (LP或母池ID)',
   `committed_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '认缴出资金额',
   `called_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '累计实缴金额',
-  `share_pct` DECIMAL(6,4) NOT NULL DEFAULT 0.0000 COMMENT '直接份额比例（%），如 35.5% 记为 35.5000',
+  `share_pct` DECIMAL(6,4) NOT NULL DEFAULT 0.0000 COMMENT '持股比例（%）',
   `status` VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '状态: active/withdrawn',
   `joined_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_pool_investor` (`pool_id`, `investor_id`),
-  FOREIGN KEY (`pool_id`) REFERENCES `pools` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`investor_id`) REFERENCES `investors` (`id`) ON DELETE RESTRICT
+  FOREIGN KEY (`pool_id`) REFERENCES `pools` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 4. 池间投资关系表 (大池投小池)
-DROP TABLE IF EXISTS `pool_investments`;
-CREATE TABLE `pool_investments` (
-  `id` VARCHAR(36) NOT NULL COMMENT '投资记录唯一ID',
-  `parent_pool_id` VARCHAR(36) NOT NULL COMMENT '母资金池ID (投资方/大池)',
-  `child_pool_id` VARCHAR(36) NOT NULL COMMENT '子资金池ID (被投资方/小池)',
-  `invested_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '已投入拨付金额',
-  `share_pct` DECIMAL(6,4) NOT NULL DEFAULT 0.0000 COMMENT '母池在子池中持有的份额比例',
-  `status` VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '状态: active/exited',
-  `invested_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '投资划拨日期',
-  `note` TEXT NULL COMMENT '备注说明',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `idx_parent_child` (`parent_pool_id`, `child_pool_id`),
-  FOREIGN KEY (`parent_pool_id`) REFERENCES `pools` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`child_pool_id`) REFERENCES `pools` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+-- 4. [已废弃] 池间投资关系表 (逻辑已并入 pool_members)
+-- DROP TABLE IF EXISTS `pool_investments`;
 
 -- 5. 投资组合项目表
 DROP TABLE IF EXISTS `projects`;
@@ -120,8 +106,8 @@ CREATE TABLE `transactions` (
   `pool_id` VARCHAR(36) NULL COMMENT '所属资金池ID',
   `project_id` VARCHAR(36) NULL COMMENT '关联的项目ID',
   `investor_id` VARCHAR(36) NULL COMMENT '关联的出资方ID',
-  `related_pool_id` VARCHAR(36) NULL COMMENT '关联对方资金池ID（适用于池间调拨流水）',
-  `type` VARCHAR(30) NOT NULL COMMENT '类型: capital_call/investment/return/distribution/fee/pool_transfer_out/pool_transfer_in',
+  `related_pool_id` VARCHAR(36) NULL COMMENT '关联对方资金池ID（适用于母子池注资流水）',
+  `type` VARCHAR(30) NOT NULL COMMENT '类型: capital_call(实缴)/investment(投项目)/pool_investment(投子池)/return/distribution/fee',
   `direction` VARCHAR(3) NOT NULL COMMENT '流向: in(流入池)/out(流出池)',
   `amount` DECIMAL(18,2) NOT NULL COMMENT '流水金额',
   `date` DATE NOT NULL COMMENT '发生日期',
@@ -218,22 +204,21 @@ INSERT IGNORE INTO `investors` (id, name, type, note) VALUES
 ('pool-2', '2024科技成长池 B', 'pool', '科技创业项目专项资金池'),
 ('pool-3', '2024新能源子池 C', 'pool', '由大池A和大池B共同投资的新能源行业子池');
 
--- 3. 注入资金池直接持股比例
+-- 3. 注入资金池成员与持股
 -- 大池 A (pool-1): 张三占 40%, 未来资本占 60%
 -- 大池 B (pool-2): 李四占 20%, 未来资本占 80%
--- 子池 C (pool-3): 张三直接持股占 10%, 李四直接占 20%, 剩余 70% 份额来自池间投资 (大池A占50%, 大池B占20%)
+-- 子池 C (pool-3): 张三(10%), 李四(20%), 剩余 70% 由母池注资 (大池A 50%, 大池B 20%)
 INSERT INTO `pool_members` (id, pool_id, investor_id, committed_amount, called_amount, share_pct, status) VALUES 
 ('pm-1', 'pool-1', 'inv-1', 20000000.00, 15000000.00, 40.0000, 'active'),
 ('pm-2', 'pool-1', 'inv-3', 30000000.00, 20800000.00, 60.0000, 'active'),
 ('pm-3', 'pool-2', 'inv-2', 6000000.00, 5000000.00, 20.0000, 'active'),
 ('pm-4', 'pool-2', 'inv-3', 24000000.00, 16500000.00, 80.0000, 'active'),
 ('pm-5', 'pool-3', 'inv-1', 1000000.00, 1000000.00, 10.0000, 'active'),
-('pm-6', 'pool-3', 'inv-2', 2000000.00, 2000000.00, 20.0000, 'active');
+('pm-6', 'pool-3', 'inv-2', 2000000.00, 2000000.00, 20.0000, 'active'),
+('pm-7', 'pool-3', 'pool-1', 5000000.00, 5000000.00, 50.0000, 'active'),
+('pm-8', 'pool-3', 'pool-2', 2000000.00, 2000000.00, 20.0000, 'active');
 
--- 4. 注入池间投资关系（大池投小池）
-INSERT INTO `pool_investments` (id, parent_pool_id, child_pool_id, invested_amount, share_pct, status) VALUES 
-('pi-1', 'pool-1', 'pool-3', 5000000.00, 50.0000, 'active'),
-('pi-2', 'pool-2', 'pool-3', 2000000.00, 20.0000, 'active');
+-- 4. [已废弃] 注入池间投资关系（数据已并入 pool_members）
 
 -- 5. 注入初始投资项目
 INSERT INTO `projects` (id, pool_id, name, code, status, committed_amount, invested_amount, returned_amount, description, tags) VALUES 
