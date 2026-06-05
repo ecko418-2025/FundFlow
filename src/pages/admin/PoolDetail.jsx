@@ -498,9 +498,10 @@ export function PoolDetail() {
                 {parentInvestments.map(pi => (
                   <div key={pi.id} onClick={() => navigate(`/admin/pools/${pi.parent_pool_id}`)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderRadius: "8px", background: "var(--surface-secondary)", marginBottom: "8px", cursor: "pointer" }}>
                     <span style={{ fontWeight: 600 }}>🏦 {pi.parent_pool_name}</span>
-                    <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                      <span className="mono">{formatCNY(pi.invested_amount, false)}</span>
-                      <span className="badge badge-warning">{formatPercent(pi.share_pct)}</span>
+                    <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                      <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>认缴参考: <span className="mono" style={{ color: "var(--text-primary)" }}>{formatCNY(pi.invested_amount, false)}</span></span>
+                      <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>实际到账: <span className="mono" style={{ color: "var(--accent-green)", fontWeight: 700 }}>{formatCNY(pi.actual_invested_amount, false)}</span></span>
+                      <span className="badge badge-warning">占比 {formatPercent(pi.dynamic_share_pct)}</span>
                     </div>
                   </div>
                 ))}
