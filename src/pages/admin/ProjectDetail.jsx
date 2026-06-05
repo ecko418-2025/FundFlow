@@ -79,12 +79,11 @@ export function ProjectDetail() {
 
       const txResult = await querySQL(
         `SELECT t.*, p.name AS pool_name, pr.name AS project_name,
-                COALESCE(i.name, p2.name) AS investor_name
+                i.name AS investor_name
          FROM transactions t
          LEFT JOIN pools p ON t.pool_id = p.id
          LEFT JOIN projects pr ON t.project_id = pr.id
          LEFT JOIN investors i ON t.investor_id = i.id
-         LEFT JOIN pools p2 ON t.investor_id = p2.id
          WHERE t.project_id = ?
          ORDER BY t.date DESC, t.created_at DESC`,
         [id]

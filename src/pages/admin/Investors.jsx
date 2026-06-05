@@ -339,9 +339,17 @@ export function Investors() {
   };
 
   const headers = [
-    { key: "name", label: "出资人/机构名称", render: (v, item) => <Link to={`/admin/investors/${item.id}`} className="text-link" style={{ fontWeight: 600 }}>{v}</Link> },
-    { key: "type", label: "类型", render: (v) => <Badge text={v === 'individual' ? '个人 LPs' : '机构基金 LPs'} status={v} /> },
-    { key: "email", label: "登录及对账邮箱", className: "mono" },
+    { key: "name", label: "出资人/机构/资金池", render: (v, item) => (
+      item.type === 'pool'
+        ? <span style={{ fontWeight: 600, color: "var(--accent-gold)" }}>🏦 {v}</span>
+        : <Link to={`/admin/investors/${item.id}`} className="text-link" style={{ fontWeight: 600 }}>{v}</Link>
+    )},
+    { key: "type", label: "类型", render: (v) => {
+      if (v === 'pool') return <Badge text="资金池主体" status="active" />;
+      if (v === 'individual') return <Badge text="个人 LPs" status={v} />;
+      return <Badge text="机构基金 LPs" status={v} />;
+    }},
+    { key: "email", label: "登录及对账邮箱", className: "mono", render: (v) => v || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>—</span> },
     { key: "uid", label: "云开发 UID", className: "mono", render: (v) => v || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>未绑定</span> },
     { key: "phone", label: "联系电话" },
     { key: "contact", label: "主要对接人" },
@@ -350,13 +358,17 @@ export function Investors() {
       key: "actions", 
       label: "操作", 
       render: (_, item) => (
-        <button 
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditModal(item); }} 
-          className="btn-secondary" 
-          style={{ padding: "4px 8px", fontSize: "0.8rem", height: "auto" }}
-        >
-          编辑 / 绑定 UID
-        </button>
+        item.type === 'pool'
+          ? <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontStyle: "italic" }}>在资金池管理编辑</span>
+          : (
+            <button 
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditModal(item); }} 
+              className="btn-secondary" 
+              style={{ padding: "4px 8px", fontSize: "0.8rem", height: "auto" }}
+            >
+              编辑 / 绑定 UID
+            </button>
+          )
       )
     }
   ];
@@ -366,7 +378,7 @@ export function Investors() {
       <div style={styles.pageHeader}>
         <div>
           <h2>出资方管理 (LPs Registry)</h2>
-          <p>维护系统内注册的出资人（包含个人投资者以及外部母基金实体）。</p>
+          <p>维护系统内所有资金参与主体，包括个人投资者、外部母基金实体，以及作为项目出资方的内部资金池（🏦 自动同步，不可在此编辑）。</p>
         </div>
       </div>
 

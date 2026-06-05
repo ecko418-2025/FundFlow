@@ -1,7 +1,7 @@
 # 项目制资金池记账系统 — 完整开发规划
 
 > 项目名称：FundFlow（资金流）  
-> 技术栈：React 18 + Vite + Firebase（Auth + Data Connect/PostgreSQL + Hosting）  
+> 技术栈：React 18 + Vite + cloudbase
 > 开发语言：中文界面 / 单一人民币
 
 ---

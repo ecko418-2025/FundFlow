@@ -133,6 +133,15 @@ export function usePools() {
       pool.contractNo || ""
     ];
     await querySQL(sql, params);
+
+    // 同步写入 investors 表镜像行（共享主键，type='pool'）
+    // 使用 INSERT IGNORE 防止重复插入（幂等）
+    await querySQL(
+      `INSERT IGNORE INTO investors (id, name, type, note)
+       VALUES (?, ?, 'pool', ?)`,
+      [id, pool.name, pool.description || ""]
+    );
+
     await fetchPools();
     return id;
   };
@@ -178,6 +187,13 @@ export function usePools() {
       poolId
     ];
     await querySQL(sql, params);
+
+    // 同步更新 investors 镜像行名称（若池子改名则镜像行也跟着改）
+    await querySQL(
+      `UPDATE investors SET name = ?, note = ? WHERE id = ? AND type = 'pool'`,
+      [updates.name, updates.description || "", poolId]
+    );
+
     await fetchPools();
   };
 

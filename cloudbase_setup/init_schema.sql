@@ -211,6 +211,13 @@ INSERT INTO `pools` (id, name, description, total_committed, available_balance, 
 ('pool-2', '2024科技成长池 B', '科技创业项目专项资金池', 30000000.00, 8500000.00, 'temporary_annually', '2024-01-01', '2024-12-31', 'uid-admin'),
 ('pool-3', '2024新能源子池 C', '由大池A和大池B共同投资的新能源行业子池', 10000000.00, 4200000.00, 'temporary_quarterly', '2024-01-01', '2024-03-31', 'uid-admin');
 
+-- 2.5 注入资金池的 investors 镜像行（共享主键，type='pool'）
+-- 这使得 transactions/project_investors 中 investor_id=poolId 能通过单一 JOIN investors 找到名称
+INSERT IGNORE INTO `investors` (id, name, type, note) VALUES
+('pool-1', '2024综合大池 A', 'pool', '年度主要资金池'),
+('pool-2', '2024科技成长池 B', 'pool', '科技创业项目专项资金池'),
+('pool-3', '2024新能源子池 C', 'pool', '由大池A和大池B共同投资的新能源行业子池');
+
 -- 3. 注入资金池直接持股比例
 -- 大池 A (pool-1): 张三占 40%, 未来资本占 60%
 -- 大池 B (pool-2): 李四占 20%, 未来资本占 80%
