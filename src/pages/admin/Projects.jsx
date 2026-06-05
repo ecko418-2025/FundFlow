@@ -294,7 +294,7 @@ export function Projects() {
   };
 
   const handleExport = () => {
-    const statusLabels = { pre: "投前考察", active: "存续管理", exited: "退出清算" };
+    const statusLabels = { pre: "投前考察", active: "存续管理", exited: "退出清算", archived: "项目归档" };
     const dataToExport = projects.map(p => {
       let tagsStr = "";
       if (p.tags) {
@@ -392,6 +392,8 @@ export function Projects() {
           rStatus = "active";
         } else if (rStatus.includes("退出") || rStatus.toLowerCase().includes("exited")) {
           rStatus = "exited";
+        } else if (rStatus.includes("归档") || rStatus.toLowerCase().includes("archive")) {
+          rStatus = "archived";
         } else {
           rStatus = "pre";
         }
@@ -520,7 +522,7 @@ export function Projects() {
       } 
     },
     { key: "status", label: "立项状态", render: (v) => {
-        const labels = { pre: "投前考察", active: "存续管理", exited: "退出清算" };
+        const labels = { pre: "投前考察", active: "存续管理", exited: "退出清算", archived: "项目归档" };
         return <Badge text={labels[v] || v} status={v} />;
       }
     },
@@ -631,6 +633,7 @@ export function Projects() {
           <option value="pre">投前考察</option>
           <option value="active">存续管理</option>
           <option value="exited">退出清算</option>
+          <option value="archived">项目归档</option>
         </select>
 
         <select 
@@ -791,6 +794,7 @@ export function Projects() {
                 <option value="pre">投前储备</option>
                 <option value="active">存续运营</option>
                 <option value="exited">完全退出</option>
+                <option value="archived">项目归档</option>
               </select>
             </div>
           </div>
@@ -930,6 +934,7 @@ export function Projects() {
                 <option value="pre">投前储备阶段</option>
                 <option value="active">存续运营阶段</option>
                 <option value="exited">完全退出阶段</option>
+                <option value="archived">项目归档阶段</option>
               </select>
             </div>
           </div>

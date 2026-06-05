@@ -391,7 +391,7 @@ export function ProjectDetail() {
           <h2>{project.name}</h2>
           <span className="mono badge badge-active">{project.code}</span>
           <Badge 
-            text={project.status === 'pre' ? '投前考察' : project.status === 'active' ? '存续管理' : '退出清算'} 
+            text={project.status === 'pre' ? '投前考察' : project.status === 'active' ? '存续管理' : project.status === 'exited' ? '退出清算' : '项目归档'} 
             status={project.status} 
           />
           {isExpired && <span className="badge badge-danger" style={{ textTransform: "none" }}>已到期</span>}
@@ -499,7 +499,7 @@ export function ProjectDetail() {
               </div>
               <div style={styles.infoRow}>
                 <span style={styles.infoLabel}>立项状态</span>
-                <span>{project.status === 'pre' ? '投前考察' : project.status === 'active' ? '存续管理' : '退出清算'}</span>
+                <span>{project.status === 'pre' ? '投前考察' : project.status === 'active' ? '存续管理' : project.status === 'exited' ? '退出清算' : '项目归档'}</span>
               </div>
               <div style={styles.infoRow}>
                 <span style={styles.infoLabel}>备注说明</span>

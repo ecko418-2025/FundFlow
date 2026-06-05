@@ -344,7 +344,7 @@ export function PoolDetail() {
     { key: "name", label: "项目名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { key: "code", label: "项目 ID", render: (v, row) => <span className="badge badge-active">{row.id}</span> },
     { key: "status", label: "状态", render: (v) => {
-        const labels = { pre: "投前", active: "存续中", exited: "已退出" };
+        const labels = { pre: "投前", active: "存续中", exited: "已退出", archived: "已归档" };
         return <Badge text={labels[v] || v} status={v} />;
       }
     },
