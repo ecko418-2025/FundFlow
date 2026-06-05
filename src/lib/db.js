@@ -176,6 +176,17 @@ function simulateSQL(sql, params) {
         return;
       }
 
+      // 0c. 自动修复历史流水中缺失 investor_id (将池级投资/回款的 investor_id 兜底填为 pool_id)
+      if (normalizedSql.startsWith("update transactions") && normalizedSql.includes("set investor_id = pool_id")) {
+        mockDb.transactions.forEach(t => {
+          if (!t.investor_id && t.pool_id && (t.type === 'investment' || t.type === 'return')) {
+            t.investor_id = t.pool_id;
+          }
+        });
+        resolve({ code: 0, message: "OK", affectedRows: mockDb.transactions.length, data: [] });
+        return;
+      }
+
       // 1. 获取所有资金池
       if (normalizedSql.startsWith("select * from pools")) {
         const attachDynamicBalance = (pool) => {
@@ -539,6 +550,24 @@ function simulateSQL(sql, params) {
         return;
       }
 
+      // 11c-2. 重算出资方在项目的累计投资额 (select sum 模式)
+      if (normalizedSql.startsWith("update project_investors") && normalizedSql.includes("select sum(")) {
+        const projectId = params[params.length - 2];
+        const investorId = params[params.length - 1];
+        const isGlobal = !normalizedSql.includes("where project_id =");
+        
+        mockDb.project_investors.forEach(pi => {
+          if (isGlobal || (pi.project_id === projectId && pi.investor_id === investorId)) {
+            const invested = mockDb.transactions
+              .filter(t => t.project_id === pi.project_id && t.investor_id === pi.investor_id && t.type === 'investment')
+              .reduce((sum, t) => sum + Number(t.amount), 0);
+            pi.invested_amount = invested;
+          }
+        });
+        resolve({ code: 0, message: "OK", affectedRows: mockDb.project_investors.length, data: [] });
+        return;
+      }
+
       // 11d. 更新项目出资方认缴参考额
       if (normalizedSql.startsWith("update project_investors") && normalizedSql.includes("set committed_amount")) {
         const [committedAmount, projectId, investorId] = params;
@@ -742,6 +771,22 @@ function simulateSQL(sql, params) {
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
         return;
       }
+      // 15b-2. 重算资金池可用余额 (select sum 模式)
+      if (normalizedSql.startsWith("update pools") && normalizedSql.includes("select sum(")) {
+        const poolId = params[params.length - 1];
+        const isGlobal = !normalizedSql.includes("where id =");
+
+        mockDb.pools.forEach(pool => {
+          if (isGlobal || pool.id === poolId) {
+            const balance = mockDb.transactions
+              .filter(t => t.pool_id === pool.id)
+              .reduce((sum, t) => sum + (t.direction === 'in' ? Number(t.amount) : -Number(t.amount)), 0);
+            pool.available_balance = balance;
+          }
+        });
+        resolve({ code: 0, message: "OK", affectedRows: mockDb.pools.length, data: [] });
+        return;
+      }
 
       // 15b. 更新资金池可用余额（流水触发）
       if (normalizedSql.startsWith("update pools")) {
@@ -756,6 +801,26 @@ function simulateSQL(sql, params) {
           }
         }
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+      // 16a-2. 重算项目累计投资额与回款额 (select sum 模式)
+      if (normalizedSql.startsWith("update projects") && normalizedSql.includes("select sum(")) {
+        const projId = params[params.length - 1];
+        const isGlobal = !normalizedSql.includes("where id =");
+
+        mockDb.projects.forEach(project => {
+          if (isGlobal || project.id === projId) {
+            const invested = mockDb.transactions
+              .filter(t => t.project_id === project.id && t.type === 'investment')
+              .reduce((sum, t) => sum + Number(t.amount), 0);
+            const returned = mockDb.transactions
+              .filter(t => t.project_id === project.id && t.type === 'return')
+              .reduce((sum, t) => sum + Number(t.amount), 0);
+            project.invested_amount = invested;
+            project.returned_amount = returned;
+          }
+        });
+        resolve({ code: 0, message: "OK", affectedRows: mockDb.projects.length, data: [] });
         return;
       }
 
@@ -802,6 +867,23 @@ function simulateSQL(sql, params) {
           }
         }
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+      // 17b-2. 重算成员累计实缴额 (select sum 模式)
+      if (normalizedSql.startsWith("update pool_members") && normalizedSql.includes("select sum(")) {
+        const poolId = params[params.length - 2];
+        const investorId = params[params.length - 1];
+        const isGlobal = !normalizedSql.includes("where pool_id =");
+
+        mockDb.pool_members.forEach(pm => {
+          if (isGlobal || (pm.pool_id === poolId && pm.investor_id === investorId)) {
+            const called = mockDb.transactions
+              .filter(t => t.pool_id === pm.pool_id && t.investor_id === pm.investor_id && t.type === 'capital_call')
+              .reduce((sum, t) => sum + Number(t.amount), 0);
+            pm.called_amount = called;
+          }
+        });
+        resolve({ code: 0, message: "OK", affectedRows: mockDb.pool_members.length, data: [] });
         return;
       }
 

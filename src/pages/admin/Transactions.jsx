@@ -244,6 +244,7 @@ export function Transactions() {
 
       if (sourceEntity.startsWith('pool:')) {
         finalPoolId = sourceEntity.split(':')[1];
+        finalInvestorId = finalPoolId; // 资金池作为出资方主体参与投资
       } else if (sourceEntity.startsWith('investor:')) {
         const parts = sourceEntity.split(':');
         finalPoolId = parts[1] === "null" ? null : parts[1];
@@ -258,6 +259,7 @@ export function Transactions() {
 
       if (targetEntity.startsWith('pool:')) {
         finalPoolId = targetEntity.split(':')[1];
+        finalInvestorId = finalPoolId; // 资金池作为出资方主体收回投资
       } else if (targetEntity.startsWith('investor:')) {
         const parts = targetEntity.split(':');
         finalPoolId = parts[1] === "null" ? null : parts[1];
@@ -484,6 +486,20 @@ export function Transactions() {
             return;
           }
           investorId = investor.id;
+        } else if (rType === "investment" || rType === "return") {
+          // 对于投资或回款，如果填了出资人名称就匹配（可以是具体LP或资金池名称），没填则自动使用该流水的资金池 ID 作为出资人主体
+          const invName = (row.investor_name || "").toString().trim();
+          if (invName) {
+            const investor = investors.find(i => i.name.trim() === invName);
+            if (investor) {
+              investorId = investor.id;
+            } else {
+              errors.push(`第 ${rowNum} 行: 指定的投资方/退款方 "${invName}" 在系统中不存在`);
+              return;
+            }
+          } else if (pool) {
+            investorId = pool.id;
+          }
         }
 
         // 匹配项目

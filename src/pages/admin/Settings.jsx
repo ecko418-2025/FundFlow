@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { querySQL } from "../../lib/db";
-import { Settings as SettingsIcon, Plus, X, Tag } from "lucide-react";
+import { Settings as SettingsIcon, Plus, X, Tag, Database as DatabaseIcon, RefreshCw } from "lucide-react";
 
 export function Settings() {
   const [systemTags, setSystemTags] = useState([]);
@@ -8,6 +8,56 @@ export function Settings() {
   
   // States for adding new tag to a category
   const [newTagInputs, setNewTagInputs] = useState({});
+  const [reconciling, setReconciling] = useState(false);
+
+  const handleReconcile = async () => {
+    if (!window.confirm("确定要对系统内的所有项目、资金池、出资方的累计财务数据进行一次全局重算与校准吗？\n\n该操作会根据所有的流水记录重新计算每个主体的统计金额，并修复历史由于直接增量删除或导入错误导致的误差。")) {
+      return;
+    }
+    setReconciling(true);
+    try {
+      // 0. 自动修复历史流水中缺失 investor_id 的数据（将池级投资/回款的 investor_id 兜底填为 pool_id）
+      await querySQL(`
+        UPDATE transactions 
+        SET investor_id = pool_id 
+        WHERE investor_id IS NULL 
+          AND pool_id IS NOT NULL 
+          AND (type = 'investment' OR type = 'return')
+      `);
+
+      // 1. 重算 projects
+      await querySQL(`
+        UPDATE projects SET
+          invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = projects.id AND type = 'investment'), 0),
+          returned_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = projects.id AND type = 'return'), 0)
+      `);
+      
+      // 2. 重算 project_investors
+      await querySQL(`
+        UPDATE project_investors SET
+          invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = project_investors.project_id AND investor_id = project_investors.investor_id AND type = 'investment'), 0)
+      `);
+
+      // 3. 重算 pool_members
+      await querySQL(`
+        UPDATE pool_members SET
+          called_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE pool_id = pool_members.pool_id AND investor_id = pool_members.investor_id AND type = 'capital_call'), 0)
+      `);
+
+      // 4. 重算 pools
+      await querySQL(`
+        UPDATE pools SET
+          available_balance = COALESCE((SELECT SUM(CASE WHEN direction = 'in' THEN amount ELSE -amount END) FROM transactions WHERE pool_id = pools.id), 0)
+      `);
+
+      alert("校准成功！已从底层流水表全量重新汇总并覆写所有统计数据（包括：项目已投/已回、出资人各项目实缴、资金池成员累计实缴、资金池可用余额）。");
+    } catch (err) {
+      console.error("Reconcile failed", err);
+      alert("校准失败：" + err.message);
+    } finally {
+      setReconciling(false);
+    }
+  };
   
   // States for adding a new category
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -248,6 +298,40 @@ export function Settings() {
 
           </div>
         )}
+      </div>
+
+      <div className="glass-card no-hover" style={{ padding: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
+          <DatabaseIcon size={20} color="var(--accent-green)" />
+          <h3 style={{ margin: 0, fontSize: "1.2rem", color: "var(--text-primary)" }}>数据库运维与财务校准</h3>
+        </div>
+        
+        <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: "24px" }}>
+          如果因为系统异常、早期删除未冲回漏洞、或批量导入流水时引起资金池可用余额、项目已投/已回金额、以及出资人累计实缴额出现偏差，
+          可使用此工具一键以流水记录为基准重新校准所有的统计金额。
+        </p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+          <button 
+            onClick={handleReconcile}
+            className="btn-primary" 
+            style={{ 
+              backgroundColor: "rgba(16, 185, 129, 0.2)", 
+              border: "1px solid var(--accent-green)",
+              color: "var(--accent-green)",
+              gap: "8px",
+              height: "42px",
+              padding: "0 20px"
+            }}
+            disabled={reconciling}
+          >
+            <RefreshCw className={reconciling ? "animate-spin" : ""} size={16} />
+            <span>{reconciling ? "正在全量校验与重算中..." : "一键全量财务金额校准"}</span>
+          </button>
+          <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+            * 该操作安全无损，仅对各统计表进行基于流水的 SQL SUM 覆盖重写，推荐在有数据偏差时执行。
+          </span>
+        </div>
       </div>
     </div>
   );

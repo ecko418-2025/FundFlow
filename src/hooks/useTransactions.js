@@ -73,45 +73,42 @@ export function useTransactions() {
       ];
       await querySQL(sqlInsert, paramsInsert);
 
-      // 2. 更新关联资金池的 available_balance 余额
-      // in: 增加余额, out: 减少余额
+      // 2. 重算关联资金池的 available_balance 余额
       if (tx.poolId) {
-        const operator = tx.direction === "in" ? "+" : "-";
-        const sqlUpdatePool = `
-          UPDATE pools 
-          SET available_balance = available_balance ${operator} ? 
-          WHERE id = ?
-        `;
-        await querySQL(sqlUpdatePool, [tx.amount, tx.poolId]);
+        await querySQL(
+          `UPDATE pools SET
+             available_balance = COALESCE((SELECT SUM(CASE WHEN direction = 'in' THEN amount ELSE -amount END) FROM transactions WHERE pool_id = ?), 0)
+           WHERE id = ?`,
+          [tx.poolId, tx.poolId]
+        );
       }
 
-      // 3. 如果是项目投资(investment)或项目回款(return)，同时更新项目的 invested_amount 或 returned_amount
+      // 3. 重算项目的 invested_amount/returned_amount 以及 project_investors 的 invested_amount
       if (tx.projectId) {
-        if (tx.type === "investment") {
+        await querySQL(
+          `UPDATE projects SET
+             invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = ? AND type = 'investment'), 0),
+             returned_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = ? AND type = 'return'), 0)
+           WHERE id = ?`,
+          [tx.projectId, tx.projectId, tx.projectId]
+        );
+        if (tx.investorId) {
           await querySQL(
-            "UPDATE projects SET invested_amount = invested_amount + ? WHERE id = ?",
-            [tx.amount, tx.projectId]
-          );
-          // 如果关联了具体项目出资方，则更新该出资方的实际到账累计额
-          if (tx.investorId) {
-             await querySQL(
-               "UPDATE project_investors SET invested_amount = invested_amount + ? WHERE project_id = ? AND investor_id = ?",
-               [tx.amount, tx.projectId, tx.investorId]
-             );
-          }
-        } else if (tx.type === "return") {
-          await querySQL(
-            "UPDATE projects SET returned_amount = returned_amount + ? WHERE id = ?",
-            [tx.amount, tx.projectId]
+            `UPDATE project_investors SET
+               invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = ? AND investor_id = ? AND type = 'investment'), 0)
+             WHERE project_id = ? AND investor_id = ?`,
+            [tx.projectId, tx.investorId, tx.projectId, tx.investorId]
           );
         }
       }
 
-      // 4. 如果是出资人实缴(capital_call)，更新 pool_members 中的 called_amount (累计实缴)
+      // 4. 如果是出资人实缴(capital_call)，重算 pool_members 中的 called_amount
       if (tx.type === "capital_call" && tx.poolId && tx.investorId) {
         await querySQL(
-          "UPDATE pool_members SET called_amount = called_amount + ? WHERE pool_id = ? AND investor_id = ?",
-          [tx.amount, tx.poolId, tx.investorId]
+          `UPDATE pool_members SET
+             called_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE pool_id = ? AND investor_id = ? AND type = 'capital_call'), 0)
+           WHERE pool_id = ? AND investor_id = ?`,
+          [tx.poolId, tx.investorId, tx.poolId, tx.investorId]
         );
       }
 
@@ -139,48 +136,48 @@ export function useTransactions() {
       }
       const tx = txs[0];
 
-      // 2. 扣减或退回涉及资金池的可用余额
+      // 2. 先删除流水记录
+      await querySQL("DELETE FROM transactions WHERE id = ?", [txId]);
+
+      // 3. 删除后重算涉及资金池的可用余额
       if (tx.pool_id) {
-        const operator = tx.direction === "in" ? "-" : "+";
-        const sqlUpdatePool = `
-          UPDATE pools 
-          SET available_balance = available_balance ${operator} ? 
-          WHERE id = ?
-        `;
-        await querySQL(sqlUpdatePool, [tx.amount, tx.pool_id]);
+        await querySQL(
+          `UPDATE pools SET
+             available_balance = COALESCE((SELECT SUM(CASE WHEN direction = 'in' THEN amount ELSE -amount END) FROM transactions WHERE pool_id = ?), 0)
+           WHERE id = ?`,
+          [tx.pool_id, tx.pool_id]
+        );
       }
 
-      // 3. 冲回项目的已投/已回金额
+      // 4. 重算涉及项目的已投/已回金额
       if (tx.project_id) {
-        if (tx.type === "investment") {
+        await querySQL(
+          `UPDATE projects SET
+             invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = ? AND type = 'investment'), 0),
+             returned_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = ? AND type = 'return'), 0)
+           WHERE id = ?`,
+          [tx.project_id, tx.project_id, tx.project_id]
+        );
+        // 同步更新 project_investors 的实缴额
+        if (tx.investor_id) {
           await querySQL(
-            "UPDATE projects SET invested_amount = invested_amount - ? WHERE id = ?",
-            [tx.amount, tx.project_id]
-          );
-          if (tx.investor_id) {
-             await querySQL(
-               "UPDATE project_investors SET invested_amount = invested_amount - ? WHERE project_id = ? AND investor_id = ?",
-               [tx.amount, tx.project_id, tx.investor_id]
-             );
-          }
-        } else if (tx.type === "return") {
-          await querySQL(
-            "UPDATE projects SET returned_amount = returned_amount - ? WHERE id = ?",
-            [tx.amount, tx.project_id]
+            `UPDATE project_investors SET
+               invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = ? AND investor_id = ? AND type = 'investment'), 0)
+             WHERE project_id = ? AND investor_id = ?`,
+            [tx.project_id, tx.investor_id, tx.project_id, tx.investor_id]
           );
         }
       }
 
-      // 4. 冲回出资人累计实缴
+      // 5. 如果是出资人实缴(capital_call)，重算 pool_members 中的 called_amount
       if (tx.type === "capital_call" && tx.pool_id && tx.investor_id) {
         await querySQL(
-          "UPDATE pool_members SET called_amount = called_amount - ? WHERE pool_id = ? AND investor_id = ?",
-          [tx.amount, tx.pool_id, tx.investor_id]
+          `UPDATE pool_members SET
+             called_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE pool_id = ? AND investor_id = ? AND type = 'capital_call'), 0)
+           WHERE pool_id = ? AND investor_id = ?`,
+          [tx.pool_id, tx.investor_id, tx.pool_id, tx.investor_id]
         );
       }
-
-      // 5. 从数据库删除此交易记录
-      await querySQL("DELETE FROM transactions WHERE id = ?", [txId]);
 
       return true;
     } catch (err) {

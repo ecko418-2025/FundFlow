@@ -244,7 +244,7 @@ INSERT INTO `projects` (id, pool_id, name, code, status, committed_amount, inves
 INSERT INTO `transactions` (id, pool_id, project_id, investor_id, type, direction, amount, date, description, reference_no, created_by) VALUES 
 ('tx-1', 'pool-1', NULL, 'inv-1', 'capital_call', 'in', 15000000.00, '2024-01-02', '张三第一期实缴出资', 'RE-20240102-01', 'uid-admin'),
 ('tx-2', 'pool-1', NULL, 'inv-3', 'capital_call', 'in', 20800000.00, '2024-01-02', '未来资本首期出资', 'RE-20240102-02', 'uid-admin'),
-('tx-3', 'pool-1', 'proj-1', NULL, 'investment', 'out', 15000000.00, '2024-01-15', '向芯片项目打款第一笔', 'PAY-20240115-01', 'uid-admin');
+('tx-3', 'pool-1', 'proj-1', 'pool-1', 'investment', 'out', 15000000.00, '2024-01-15', '向芯片项目打款第一笔', 'PAY-20240115-01', 'uid-admin');
 
 -- 7. 注入项目出资方数据
 INSERT INTO `project_investors` (id, project_id, investor_id, committed_amount, invested_amount, status, joined_at) VALUES
