@@ -222,6 +222,14 @@ export function usePools() {
     await querySQL(sql, [committedAmount, poolId, investorId]);
   };
 
+  const removePoolMember = async (poolId, investorId) => {
+    const sql = `
+      DELETE FROM pool_members
+      WHERE pool_id = ? AND investor_id = ?
+    `;
+    await querySQL(sql, [poolId, investorId]);
+  };
+
   return {
     pools,
     loading,
@@ -232,7 +240,8 @@ export function usePools() {
     addPoolInvestment,
     addPoolMember,
     updatePool,
-    updatePoolMember
+    updatePoolMember,
+    removePoolMember
   };
 }
 export default usePools;

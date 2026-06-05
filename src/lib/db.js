@@ -125,8 +125,8 @@ export async function querySQL(sql, params = []) {
     }
     return res.result.data;
   } catch (error) {
-    console.warn("云开发连接失败，降级到本地 Mock 运行。错误：", error.message);
-    return simulateSQL(sql, params);
+    console.error("云数据库执行失败：", error.message);
+    throw error;
   }
 }
 
@@ -733,6 +733,27 @@ function simulateSQL(sql, params) {
       if (normalizedSql.startsWith("delete from distributions")) {
         const distId = params[0];
         mockDb.distributions = mockDb.distributions.filter(d => d.id !== distId);
+        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+
+      if (normalizedSql.startsWith("delete from pool_members")) {
+        const [pool_id, investor_id] = params;
+        mockDb.pool_members = mockDb.pool_members.filter(pm => !(pm.pool_id === pool_id && pm.investor_id === investor_id));
+        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+
+      if (normalizedSql.startsWith("delete from pool_investments")) {
+        const [id] = params;
+        mockDb.pool_investments = mockDb.pool_investments.filter(pi => pi.id !== id);
+        resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
+        return;
+      }
+
+      if (normalizedSql.startsWith("delete from project_investors")) {
+        const [project_id, investor_id] = params;
+        mockDb.project_investors = mockDb.project_investors.filter(pi => !(pi.project_id === project_id && pi.investor_id === investor_id));
         resolve({ code: 0, message: "OK", affectedRows: 1, data: [] });
         return;
       }

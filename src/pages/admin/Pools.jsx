@@ -632,8 +632,8 @@ export function Pools() {
                 className="form-input"
                 required
               >
-                <option value="active">运营中 (Active)</option>
-                <option value="closed">已关闭/清算 (Closed)</option>
+                <option value="active">运营中</option>
+                <option value="closed">已关闭/清算</option>
               </select>
             </div>
           </div>

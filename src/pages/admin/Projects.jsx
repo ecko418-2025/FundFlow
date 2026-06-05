@@ -788,9 +788,9 @@ export function Projects() {
                 className="form-input"
                 style={{ height: "42px" }}
               >
-                <option value="pre">投前储备 (Pre-investment)</option>
-                <option value="active">存续运营 (Active Portfolio)</option>
-                <option value="exited">完全退出 (Exited)</option>
+                <option value="pre">投前储备</option>
+                <option value="active">存续运营</option>
+                <option value="exited">完全退出</option>
               </select>
             </div>
           </div>
@@ -896,8 +896,8 @@ export function Projects() {
       {/* 弹窗：编辑项目（完整字段） */}
       <Modal isOpen={isEditProjectOpen} onClose={() => setIsEditProjectOpen(false)} title={`编辑项目：${editingProject?.name || ""}`}>
         <form onSubmit={handleEditProjectSubmit} style={styles.form}>
-          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">项目 ID</label>
               <input 
                 type="text" 
@@ -907,7 +907,7 @@ export function Projects() {
                 style={{ backgroundColor: "var(--background)", cursor: "not-allowed" }}
               />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">相关合同编号</label>
               <input 
                 type="text" 
@@ -919,43 +919,43 @@ export function Projects() {
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">项目名称 *</label>
-            <input type="text" required value={editProjName} onChange={(e) => setEditProjName(e.target.value)} className="form-input" />
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 2, marginBottom: "12px" }}>
+              <label className="form-label">项目名称 *</label>
+              <input type="text" required value={editProjName} onChange={(e) => setEditProjName(e.target.value)} className="form-input" />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">立项阶段 *</label>
+              <select value={editProjStatus} onChange={(e) => setEditProjStatus(e.target.value)} className="form-input" style={{ height: "42px" }}>
+                <option value="pre">投前储备阶段</option>
+                <option value="active">存续运营阶段</option>
+                <option value="exited">完全退出阶段</option>
+              </select>
+            </div>
           </div>
 
-          <div className="form-group" style={{ display: "flex", gap: "16px" }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <label className="form-label">计划出资规模 *</label>
+              <AmountInput value={editProjCommitted} onChange={setEditProjCommitted} placeholder="请输入计划出资额（元）" />
+            </div>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">运行起始日期</label>
               <input type="date" value={editProjStartDate} onChange={(e) => setEditProjStartDate(e.target.value)} className="form-input mono" />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
               <label className="form-label">预计结束日期</label>
               <input type="date" value={editProjEndDate} onChange={(e) => setEditProjEndDate(e.target.value)} className="form-input mono" />
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">计划出资规模 *</label>
-            <AmountInput value={editProjCommitted} onChange={setEditProjCommitted} placeholder="请输入计划出资额（元）" />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">立项阶段 *</label>
-            <select value={editProjStatus} onChange={(e) => setEditProjStatus(e.target.value)} className="form-input">
-              <option value="pre">投前储备阶段 (Pre-investment)</option>
-              <option value="active">存续运营阶段 (Active Portfolio)</option>
-              <option value="exited">完全退出阶段 (Exited)</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">项目分类标签</label>
+          <div className="form-group" style={{ marginBottom: "12px" }}>
+            <label className="form-label" style={{ marginBottom: "4px" }}>项目分类标签</label>
             {systemTags.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "6px" }}>
                 {systemTags.map(cat => (
-                  <div key={cat.id} style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", minWidth: "80px" }}>{cat.name}:</span>
+                  <div key={cat.id} style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", fontSize: "0.8rem" }}>
+                    <span style={{ color: "var(--text-secondary)", minWidth: "70px" }}>{cat.name}:</span>
                     {cat.tags && cat.tags.map(tag => {
                       const currentTags = editProjTags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
                       const isSelected = currentTags.includes(tag);
@@ -972,6 +972,8 @@ export function Projects() {
                           className={`badge ${isSelected ? 'badge-active' : ''}`}
                           style={{ 
                             cursor: "pointer", 
+                            fontSize: "0.75rem",
+                            padding: "2px 6px",
                             border: isSelected ? "none" : `1px solid ${cat.color}40`, 
                             backgroundColor: isSelected ? cat.color : "transparent", 
                             color: isSelected ? "#fff" : cat.color 
@@ -985,12 +987,19 @@ export function Projects() {
                 ))}
               </div>
             )}
-            <input type="text" value={editProjTags} onChange={(e) => setEditProjTags(e.target.value)} placeholder="自定义标签用逗号隔开，或者点击上方已有标签快速添加" className="form-input" />
+            <input 
+              type="text" 
+              value={editProjTags} 
+              onChange={(e) => setEditProjTags(e.target.value)} 
+              placeholder="自定义标签用逗号隔开，或者点击上方已有标签快速添加" 
+              className="form-input" 
+              style={{ height: "36px", fontSize: "0.85rem" }}
+            />
           </div>
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: "12px" }}>
             <label className="form-label">项目详情描述</label>
-            <textarea value={editProjDesc} onChange={(e) => setEditProjDesc(e.target.value)} className="form-input" rows={3} style={{ resize: "none" }} />
+            <textarea value={editProjDesc} onChange={(e) => setEditProjDesc(e.target.value)} className="form-input" rows={2} style={{ resize: "none" }} />
           </div>
 
           <div style={styles.modalActions}>

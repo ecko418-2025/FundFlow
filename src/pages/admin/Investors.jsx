@@ -34,15 +34,27 @@ export function Investors() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  const paginatedInvestors = React.useMemo(() => {
-    return investors.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  }, [investors, currentPage, pageSize]);
+  const [filterType, setFilterType] = useState("investors");
 
-  const totalPages = Math.ceil(investors.length / pageSize);
+  const filteredInvestors = React.useMemo(() => {
+    let result = investors;
+    if (filterType === "investors") {
+      result = result.filter(inv => inv.type === "individual" || inv.type === "fund");
+    } else if (filterType === "pools") {
+      result = result.filter(inv => inv.type === "pool");
+    }
+    return result;
+  }, [investors, filterType]);
+
+  const paginatedInvestors = React.useMemo(() => {
+    return filteredInvestors.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredInvestors, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredInvestors.length / pageSize);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [investors.length]);
+  }, [filteredInvestors.length, filterType]);
 
   // 新增出资方表单状态
   const [name, setName] = useState("");
@@ -377,7 +389,7 @@ export function Investors() {
     <div style={styles.container}>
       <div style={styles.pageHeader}>
         <div>
-          <h2>出资方管理 (LPs Registry)</h2>
+          <h2>出资方管理</h2>
           <p>维护系统内所有资金参与主体，包括个人投资者、外部母基金实体，以及作为项目出资方的内部资金池（🏦 自动同步，不可在此编辑）。</p>
         </div>
       </div>
@@ -410,10 +422,26 @@ export function Investors() {
       </div>
 
       <div className="glass-card no-hover" style={{ padding: "20px" }}>
+        <div style={{ display: "flex", gap: "16px", marginBottom: "16px", alignItems: "center" }}>
+          <select 
+            value={filterType} 
+            onChange={(e) => setFilterType(e.target.value)}
+            className="form-input"
+            style={{ width: "200px" }}
+          >
+            <option value="investors">出资人/机构</option>
+            <option value="pools">内部资金池</option>
+            <option value="all">全部主体</option>
+          </select>
+          <span style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+            提示：只有当选中全部主体或者出资人/机构时，才可以查看到系统内部同步的资金池作为出资方的情况
+          </span>
+        </div>
+
         <DataTable 
           headers={headers} 
           data={paginatedInvestors} 
-          emptyMessage={loading ? "加载中..." : "暂无已登记的出资方"}
+          emptyMessage={loading ? "加载中..." : "暂无符合条件的出资方"}
         />
 
         {/* 分页控制栏 */}
@@ -487,8 +515,8 @@ export function Investors() {
                 className="form-input"
                 style={{ height: "42px" }}
               >
-                <option value="individual">个人投资者 (Individual)</option>
-                <option value="fund">机构基金/母基金 (Fund)</option>
+                <option value="individual">个人投资者</option>
+                <option value="fund">机构基金/母基金</option>
               </select>
             </div>
           </div>
@@ -584,8 +612,8 @@ export function Investors() {
                 className="form-input"
                 style={{ height: "42px" }}
               >
-                <option value="individual">个人投资者 (Individual)</option>
-                <option value="fund">机构基金/母基金 (Fund)</option>
+                <option value="individual">个人投资者</option>
+                <option value="fund">机构基金/母基金</option>
               </select>
             </div>
           </div>

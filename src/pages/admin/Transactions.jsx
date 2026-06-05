@@ -1047,14 +1047,14 @@ export function Transactions() {
             <div className="form-group" style={{ flex: 1, marginBottom: '12px' }}>
               <label className="form-label">交易类型 (系统定义) *</label>
               <select value={customType} onChange={(e) => setCustomType(e.target.value)} className="form-input" required style={{ height: '42px' }}>
-                <option value="capital_call">LP实缴打款 (capital_call)</option>
-                <option value="investment">项目投资 (investment)</option>
-                <option value="return">项目回款 (return)</option>
-                <option value="distribution">收益分红 (distribution)</option>
-                <option value="fee">管理费/支出 (fee)</option>
-                <option value="pool_transfer_out">资金池划出 (pool_transfer_out)</option>
-                <option value="pool_transfer_in">资金池划入 (pool_transfer_in)</option>
-                <option value="adjustment">人工核校 (adjustment)</option>
+                <option value="capital_call">LP实缴打款</option>
+                <option value="investment">项目投资</option>
+                <option value="return">项目回款</option>
+                <option value="distribution">收益分红</option>
+                <option value="fee">管理费/支出</option>
+                <option value="pool_transfer_out">资金池划出</option>
+                <option value="pool_transfer_in">资金池划入</option>
+                <option value="adjustment">人工核校</option>
               </select>
             </div>
             <div className="form-group" style={{ flex: 1, marginBottom: '12px' }}>

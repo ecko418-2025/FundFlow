@@ -234,7 +234,7 @@ export function Distribution() {
     <div style={styles.container}>
       {/* 头部说明 */}
       <div>
-        <h2>收益分配计算器 (CTE Share Calculator)</h2>
+        <h2>收益分配计算器</h2>
         <p>输入待分配总额，系统通过 **递归 SQL 算法** 穿透多级池间出资关系，计算每位个人/机构投资人的最终有效份额，并完成一键划拨分红。</p>
       </div>
 
@@ -277,7 +277,7 @@ export function Distribution() {
                 onChange={(e) => setIsPenetrate(e.target.checked)} 
                 style={{ width: '16px', height: '16px', cursor: 'pointer' }}
               />
-              <label htmlFor="isPenetrate" style={{ cursor: 'pointer', margin: 0 }}>直接穿透分配到具体个人 (Penetrate to Individuals)</label>
+              <label htmlFor="isPenetrate" style={{ cursor: 'pointer', margin: 0 }}>直接穿透分配到具体个人</label>
             </div>
 
             <div className="form-group">
@@ -458,7 +458,7 @@ export function Distribution() {
       <div className="glass-card" style={styles.historyCard}>
         <h3 style={styles.sectionTitle}>
           <FileText size={18} color="var(--accent-green)" />
-          <span>收益历史记录 (Settlement History)</span>
+          <span>收益历史记录</span>
         </h3>
         
         {distHistoryLoading ? (

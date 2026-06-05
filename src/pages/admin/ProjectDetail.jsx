@@ -21,7 +21,8 @@ import {
   Info,
   History,
   Users,
-  Pencil
+  Pencil,
+  Trash2
 } from "lucide-react";
 
 export function ProjectDetail() {
@@ -249,7 +250,28 @@ export function ProjectDetail() {
     }
   };
 
-  if (loading) return <div style={styles.loading}>加载项目详情中...</div>;
+  const handleDeleteProjectInvestor = async (e, investor) => {
+    e.stopPropagation();
+    if (Number(investor.invested_amount) > 0) {
+      alert("该出资人已有实缴记录，不可删除。");
+      return;
+    }
+    if (!window.confirm(`确定要移除出资人 ${investor.investor_name} 吗？`)) {
+      return;
+    }
+    try {
+      await querySQL(
+        `DELETE FROM project_investors WHERE project_id = ? AND investor_id = ?`,
+        [project.id, investor.investor_id]
+      );
+      await loadProjectDetails();
+      alert("出资人已移除！");
+    } catch (err) {
+      alert("移除失败：" + err.message);
+    }
+  };
+
+  if (loading) return <div style={styles.loading}>加载中...</div>;
   if (error) return <div style={styles.error}><Info color="red" /> {error}</div>;
   if (!project) return null;
 
@@ -323,14 +345,26 @@ export function ProjectDetail() {
       label: "操作",
       align: "right",
       render: (v, row) => (
-        <button
-          onClick={(e) => { e.stopPropagation(); handleOpenEditInvestor(row); }}
-          className="btn-secondary"
-          style={{ padding: "5px 10px", fontSize: "0.78rem", gap: "4px" }}
-        >
-          <Pencil size={12} />
-          <span>编辑认缴</span>
-        </button>
+        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleOpenEditInvestor(row); }}
+            className="btn-secondary"
+            style={{ padding: "5px 10px", fontSize: "0.78rem", gap: "4px" }}
+          >
+            <Pencil size={12} />
+            <span>编辑认缴</span>
+          </button>
+          <button
+            onClick={(e) => handleDeleteProjectInvestor(e, row)}
+            className="btn-secondary"
+            style={{ padding: "5px 10px", fontSize: "0.78rem", gap: "4px", color: Number(row.invested_amount) > 0 ? "var(--text-muted)" : "var(--accent-red)", cursor: Number(row.invested_amount) > 0 ? "not-allowed" : "pointer" }}
+            title={Number(row.invested_amount) > 0 ? "已有实缴，不可删除" : "删除出资人"}
+            disabled={Number(row.invested_amount) > 0}
+          >
+            <Trash2 size={12} />
+            <span>删除</span>
+          </button>
+        </div>
       )
     }
   ];
@@ -508,12 +542,25 @@ export function ProjectDetail() {
         {activeTab === "investors" && (
           <div className="glass-card no-hover" style={{ padding: "20px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>项目出资方名单</h3>
+              <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>个人/机构投资方名单</h3>
               <button onClick={() => setIsAddInvestorOpen(true)} className="btn-primary" style={{ padding: "8px 14px", fontSize: "0.85rem", gap: "6px" }}>
                 <Plus size={15} /><span>添加出资方</span>
               </button>
             </div>
-            <DataTable headers={investorHeaders} data={projectInvestors} emptyMessage="当前项目暂无出资方记录，点击右上角添加" />
+            <DataTable 
+              headers={investorHeaders} 
+              data={projectInvestors.filter(pi => pi.investor_type !== 'pool')} 
+              emptyMessage="当前暂无真实的个人或机构出资记录，点击右上角添加" 
+            />
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "32px", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>内部资金池作为直接出资方</h3>
+            </div>
+            <DataTable 
+              headers={investorHeaders} 
+              data={projectInvestors.filter(pi => pi.investor_type === 'pool')} 
+              emptyMessage="暂无内部资金池作为出资方" 
+            />
           </div>
         )}
 
@@ -610,14 +657,14 @@ export function ProjectDetail() {
               <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
                 <label className="form-label">交易类型 (系统定义) *</label>
                 <select value={customType} onChange={(e) => setCustomType(e.target.value)} className="form-input" required style={{ height: "42px" }}>
-                  <option value="capital_call">LP实缴打款 (capital_call)</option>
-                  <option value="investment">项目投资 (investment)</option>
-                  <option value="return">项目回款 (return)</option>
-                  <option value="distribution">收益分红 (distribution)</option>
-                  <option value="fee">管理费/支出 (fee)</option>
-                  <option value="pool_transfer_out">资金池划出 (pool_transfer_out)</option>
-                  <option value="pool_transfer_in">资金池划入 (pool_transfer_in)</option>
-                  <option value="adjustment">人工核校 (adjustment)</option>
+                  <option value="capital_call">LP实缴打款</option>
+                  <option value="investment">项目投资</option>
+                  <option value="return">项目回款</option>
+                  <option value="distribution">收益分红</option>
+                  <option value="fee">管理费/支出</option>
+                  <option value="pool_transfer_out">资金池划出</option>
+                  <option value="pool_transfer_in">资金池划入</option>
+                  <option value="adjustment">人工核校</option>
                 </select>
               </div>
               <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
