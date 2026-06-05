@@ -258,7 +258,7 @@ export function ProjectDetail() {
   const remainingCommitted = Math.max(0, project.committed_amount - project.invested_amount);
 
   // 全项目已到账总额（用于动态持股比例计算）
-  const totalProjectInvested = projectInvestors.reduce((s, pi) => s + (pi.invested_amount || 0), 0);
+  const totalProjectInvested = projectInvestors.reduce((s, pi) => s + Number(pi.invested_amount || 0), 0);
 
   const txHeaders = [
     { key: "date", label: "交易日期", render: (v) => formatDate(v) },
@@ -305,7 +305,7 @@ export function ProjectDetail() {
       label: "实缴持股比例",
       align: "right",
       render: (v) => {
-        const pct = totalProjectInvested > 0 ? (v / totalProjectInvested * 100) : 0;
+        const pct = totalProjectInvested > 0 ? (Number(v || 0) / totalProjectInvested * 100) : 0;
         return (
           <div style={{ textAlign: "right" }}>
             <span className="mono amt-bold" style={{ color: "var(--accent-gold)" }}>

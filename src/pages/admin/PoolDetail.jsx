@@ -156,7 +156,7 @@ export function PoolDetail() {
   };
 
   // 计算全池累计实缴总额（用于动态比例）
-  const totalCalledAmount = members.reduce((sum, m) => sum + (m.called_amount || 0), 0);
+  const totalCalledAmount = members.reduce((sum, m) => sum + Number(m.called_amount || 0), 0);
 
   const memberHeaders = [
     { key: "investor_name", label: "投资者名称", render: (v) => <span style={{ fontWeight: 600 }}>{v}</span> },
@@ -168,7 +168,7 @@ export function PoolDetail() {
       label: "实缴持股比例",
       align: "right",
       render: (v) => {
-        const pct = totalCalledAmount > 0 ? (v / totalCalledAmount * 100) : 0;
+        const pct = totalCalledAmount > 0 ? (Number(v || 0) / totalCalledAmount * 100) : 0;
         return (
           <div style={{ textAlign: "right" }}>
             <span className="mono amt-bold" style={{ color: "var(--accent-gold)" }}>
@@ -672,7 +672,7 @@ export function PoolDetail() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginBottom: "4px" }}>实缴持股比例</div>
                 <div className="mono" style={{ color: "var(--accent-gold)", fontWeight: 700 }}>
-                  {totalCalledAmount > 0 ? (editingMember.called_amount / totalCalledAmount * 100).toFixed(4) : "0.0000"}%
+                  {totalCalledAmount > 0 ? (Number(editingMember.called_amount || 0) / totalCalledAmount * 100).toFixed(4) : "0.0000"}%
                 </div>
               </div>
             </div>
@@ -688,7 +688,7 @@ export function PoolDetail() {
                 <span style={{ fontSize: "0.72rem", color: "var(--text-secondary)", marginLeft: "6px", fontWeight: 400 }}>（仅作计划参考，不影响持股比例）</span>
               </label>
               <AmountInput value={editMemberCommitted} onChange={setEditMemberCommitted} placeholder="认缴总额目标（元）" />
-              {editingMember.called_amount > 0 && Number(editMemberCommitted) < editingMember.called_amount && (
+              {editingMember.called_amount > 0 && Number(editMemberCommitted) < Number(editingMember.called_amount) && (
                 <p style={{ fontSize: "0.75rem", color: "var(--accent-gold)", marginTop: "6px" }}>
                   ⚠️ 认缴参考额低于已实缴金额（{formatCNY(editingMember.called_amount, false)}），请确认是否正确。
                 </p>
