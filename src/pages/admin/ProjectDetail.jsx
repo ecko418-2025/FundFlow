@@ -78,11 +78,13 @@ export function ProjectDetail() {
       setProject(projResult[0]);
 
       const txResult = await querySQL(
-        `SELECT t.*, p.name AS pool_name, pr.name AS project_name, i.name AS investor_name
+        `SELECT t.*, p.name AS pool_name, pr.name AS project_name,
+                COALESCE(i.name, p2.name) AS investor_name
          FROM transactions t
          LEFT JOIN pools p ON t.pool_id = p.id
          LEFT JOIN projects pr ON t.project_id = pr.id
          LEFT JOIN investors i ON t.investor_id = i.id
+         LEFT JOIN pools p2 ON t.investor_id = p2.id
          WHERE t.project_id = ?
          ORDER BY t.date DESC, t.created_at DESC`,
         [id]
@@ -265,7 +267,19 @@ export function ProjectDetail() {
     { 
       key: "type", 
       label: "交易类型", 
-      render: (v) => v === "investment" ? "打款投入" : "项目回款"
+      render: (v) => {
+        const typeMap = {
+          investment: "项目打款投入",
+          return: "项目回款",
+          capital_call: "LP实缴打款",
+          distribution: "收益分配",
+          fee: "费用支出",
+          pool_transfer_out: "资金池划出",
+          pool_transfer_in: "资金池划入",
+          adjustment: "账务调整",
+        };
+        return typeMap[v] || v;
+      }
     },
     { key: "direction", label: "资金流向", render: (v) => <Badge text={v === 'in' ? '流入池' : '流出池'} status={v} /> },
     { 

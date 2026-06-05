@@ -10,12 +10,14 @@ export function useTransactions() {
    */
   const getTransactions = async (filters = {}) => {
     let sql = `
-      SELECT t.*, p.name AS pool_name, pr.name AS project_name, i.name AS investor_name, rp.name AS related_pool_name 
+      SELECT t.*, p.name AS pool_name, pr.name AS project_name,
+             COALESCE(i.name, p2.name) AS investor_name, rp.name AS related_pool_name 
       FROM transactions t
       LEFT JOIN pools p ON t.pool_id = p.id
       LEFT JOIN pools rp ON t.related_pool_id = rp.id
       LEFT JOIN projects pr ON t.project_id = pr.id
       LEFT JOIN investors i ON t.investor_id = i.id
+      LEFT JOIN pools p2 ON t.investor_id = p2.id
       WHERE 1=1
     `;
     const params = [];
