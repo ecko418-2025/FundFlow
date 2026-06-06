@@ -7,10 +7,10 @@
       "name": "executeSQL",
       "timeout": 10,
       "envVariables": {
-        "DB_HOST": "172.17.0.9",
-        "DB_USER": "ecko",
-        "DB_PASSWORD": "Ecko0418",
-        "DB_DATABASE": "cloud1-d2gpq0fat0dd3c17f",
+        "DB_HOST": "<set-in-cloudbase-console>",
+        "DB_USER": "<set-in-cloudbase-console>",
+        "DB_PASSWORD": "<set-in-cloudbase-console>",
+        "DB_DATABASE": "<set-in-cloudbase-console>",
         "DB_PORT": "3306"
       },
       "vpc": {

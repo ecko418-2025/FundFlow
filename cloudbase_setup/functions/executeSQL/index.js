@@ -55,6 +55,21 @@ exports.main = async (event, context) => {
     }
   }
 
+  if (
+    lowerSql.includes('audit_logs') &&
+    (
+      lowerSql.trim().startsWith('delete') ||
+      lowerSql.trim().startsWith('update') ||
+      lowerSql.includes(' delete from audit_logs') ||
+      lowerSql.includes(' update audit_logs')
+    )
+  ) {
+    return {
+      code: -3,
+      message: "操作安全日志仅允许新增与查询，禁止通过业务网关修改或删除"
+    };
+  }
+
   try {
     const dbPool = getPool();
     // 强制使用 execute 预编译机制以杜绝 SQL 注入漏洞

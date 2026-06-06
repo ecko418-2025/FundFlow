@@ -114,6 +114,7 @@ CREATE TABLE `transactions` (
   `description` TEXT NULL COMMENT '交易摘要',
   `reference_no` VARCHAR(100) NULL COMMENT '凭证号/网银流水号',
   `attachment_url` TEXT NULL COMMENT '凭证附件链接',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'approved' COMMENT '状态: pending(待审核)/approved(已生效)/rejected(已驳回)',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '登账时间',
   `created_by` VARCHAR(128) NOT NULL COMMENT '操作员 Auth UID',
   PRIMARY KEY (`id`),
@@ -126,12 +127,12 @@ CREATE TABLE `transactions` (
 DROP TABLE IF EXISTS `distributions`;
 CREATE TABLE `distributions` (
   `id` VARCHAR(36) NOT NULL COMMENT '分配方案ID',
-  `pool_id` VARCHAR(36) NOT NULL COMMENT '涉及资金池ID',
+  `pool_id` VARCHAR(36) NULL COMMENT '涉及资金池ID',
   `project_id` VARCHAR(36) NULL COMMENT '关联退出项目ID',
   `total_amount` DECIMAL(18,2) NOT NULL COMMENT '待分配分红总金额',
   `distribution_date` DATE NOT NULL COMMENT '方案实施日期',
   `description` TEXT NULL COMMENT '方案说明',
-  `status` VARCHAR(20) NOT NULL DEFAULT 'draft' COMMENT '状态: draft(草稿)/confirmed(已执行)',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending(待审核)/confirmed(已执行)/rejected(已驳回)',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `confirmed_at` DATETIME NULL COMMENT '执行确认时间',
   PRIMARY KEY (`id`),
@@ -145,9 +146,9 @@ CREATE TABLE `distribution_items` (
   `id` VARCHAR(36) NOT NULL COMMENT '明细ID',
   `distribution_id` VARCHAR(36) NOT NULL COMMENT '关联分配方案',
   `investor_id` VARCHAR(36) NOT NULL COMMENT '出资人ID',
-  `direct_share_pct` DECIMAL(6,4) NOT NULL DEFAULT 0.0000 COMMENT '直接出资比例',
-  `indirect_share_pct` DECIMAL(6,4) NOT NULL DEFAULT 0.0000 COMMENT '上层穿透折算间接出资比例',
-  `effective_share_pct` DECIMAL(6,4) NOT NULL DEFAULT 0.0000 COMMENT '有效持股比例 = 直接 + 间接',
+  `direct_share_pct` DECIMAL(8,4) NOT NULL DEFAULT 0.0000 COMMENT '直接出资比例',
+  `indirect_share_pct` DECIMAL(8,4) NOT NULL DEFAULT 0.0000 COMMENT '上层穿透折算间接出资比例',
+  `effective_share_pct` DECIMAL(8,4) NOT NULL DEFAULT 0.0000 COMMENT '有效持股比例 = 直接 + 间接',
   `amount` DECIMAL(18,2) NOT NULL COMMENT '分得的红利金额',
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_dist_investor` (`distribution_id`, `investor_id`),
@@ -162,7 +163,37 @@ CREATE TABLE `settings` (
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 9. 系统用户与角色关系表
+-- 9. 操作安全审计日志表（只追加，不在业务页面提供删除/修改）
+DROP TABLE IF EXISTS `audit_logs`;
+CREATE TABLE `audit_logs` (
+  `id` VARCHAR(64) NOT NULL COMMENT '日志ID',
+  `actor_uid` VARCHAR(128) NULL COMMENT '操作人 UID',
+  `actor_email` VARCHAR(255) NULL COMMENT '操作人邮箱',
+  `actor_role` VARCHAR(20) NULL COMMENT '操作人角色',
+  `actor_name` VARCHAR(100) NULL COMMENT '操作人显示名',
+  `action` VARCHAR(50) NOT NULL COMMENT '操作动作',
+  `module` VARCHAR(50) NOT NULL COMMENT '所属模块',
+  `target_type` VARCHAR(50) NULL COMMENT '操作对象类型',
+  `target_id` VARCHAR(128) NULL COMMENT '操作对象ID',
+  `target_label` VARCHAR(255) NULL COMMENT '操作对象名称/编号',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'success' COMMENT '结果: success/failure',
+  `message` VARCHAR(500) NULL COMMENT '摘要说明',
+  `before_data` LONGTEXT NULL COMMENT '操作前数据 JSON',
+  `after_data` LONGTEXT NULL COMMENT '操作后数据 JSON',
+  `request_payload` LONGTEXT NULL COMMENT '提交参数 JSON',
+  `error_message` TEXT NULL COMMENT '失败原因',
+  `ip_address` VARCHAR(64) NULL COMMENT 'IP 地址',
+  `user_agent` VARCHAR(500) NULL COMMENT '浏览器信息',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_created_at` (`created_at`),
+  KEY `idx_audit_actor_uid` (`actor_uid`),
+  KEY `idx_audit_module_action` (`module`, `action`),
+  KEY `idx_audit_target` (`target_type`, `target_id`),
+  KEY `idx_audit_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 10. 系统用户与角色关系表
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `uid` VARCHAR(128) NOT NULL COMMENT '云开发 Auth UID',
@@ -187,6 +218,7 @@ INSERT INTO `investors` (id, name, type, email, uid, phone, contact, note) VALUE
 INSERT INTO `users` (uid, email, role, investor_id, display_name) VALUES 
 ('uid-admin', 'admin@example.com', 'admin', NULL, '系统管理员'),
 ('2062179704411439105', 'ecko418@gmail.com', 'admin', NULL, 'ecko418（管理员）'),
+('uid-operator', 'operator@example.com', 'operator', NULL, '王经办（经办员）'),
 ('uid-zhangsan', 'zhangsan@example.com', 'lp', 'inv-1', '张三'),
 ('uid-lisi', 'lisi@example.com', 'lp', 'inv-2', '李四'),
 ('uid-future', 'future@example.com', 'lp', 'inv-3', '未来资本');
@@ -226,10 +258,10 @@ INSERT INTO `projects` (id, pool_id, name, code, status, committed_amount, inves
 ('proj-2', 'pool-3', '高倍率固态锂电池研发', 'P-2024-002', 'active', 5000000.00, 4000000.00, 0.00, '新能源固电池项目', '["固态电池", "新能源"]');
 
 -- 6. 注入测试流水账目
-INSERT INTO `transactions` (id, pool_id, project_id, investor_id, type, direction, amount, date, description, reference_no, created_by) VALUES 
-('tx-1', 'pool-1', NULL, 'inv-1', 'capital_call', 'in', 15000000.00, '2024-01-02', '张三第一期实缴出资', 'RE-20240102-01', 'uid-admin'),
-('tx-2', 'pool-1', NULL, 'inv-3', 'capital_call', 'in', 20800000.00, '2024-01-02', '未来资本首期出资', 'RE-20240102-02', 'uid-admin'),
-('tx-3', 'pool-1', 'proj-1', 'pool-1', 'investment', 'out', 15000000.00, '2024-01-15', '向芯片项目打款第一笔', 'PAY-20240115-01', 'uid-admin');
+INSERT INTO `transactions` (id, pool_id, project_id, investor_id, type, direction, amount, date, description, reference_no, created_by, status) VALUES 
+('tx-1', 'pool-1', NULL, 'inv-1', 'capital_call', 'in', 15000000.00, '2024-01-02', '张三第一期实缴出资', 'RE-20240102-01', 'uid-admin', 'approved'),
+('tx-2', 'pool-1', NULL, 'inv-3', 'capital_call', 'in', 20800000.00, '2024-01-02', '未来资本首期出资', 'RE-20240102-02', 'uid-admin', 'approved'),
+('tx-3', 'pool-1', 'proj-1', 'pool-1', 'investment', 'out', 15000000.00, '2024-01-15', '向芯片项目打款第一笔', 'PAY-20240115-01', 'uid-admin', 'approved');
 
 -- 7. 注入项目出资方数据
 INSERT INTO `project_investors` (id, project_id, investor_id, committed_amount, invested_amount, status, joined_at) VALUES

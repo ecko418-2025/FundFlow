@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { useAuthContext } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { TrendingUp, Key, Mail, AlertCircle, ArrowRight } from "lucide-react";
 
 export function Login() {
   const { login, error: loginError } = useAuthContext();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,8 +20,9 @@ export function Login() {
     setLoading(true);
     setError(null);
     try {
-      await login(email, password);
-      // 成功登录后，Auth 监听会自动处理路由跳转
+      const loggedUser = await login(email, password);
+      const roleHome = loggedUser.role === "admin" || loggedUser.role === "operator" ? "/admin" : "/lp";
+      navigate(roleHome, { replace: true });
     } catch (err) {
       setError(err.message || "登录失败");
     } finally {
@@ -27,9 +30,9 @@ export function Login() {
     }
   };
 
-  const handleQuickLogin = (mockEmail) => {
+  const handleQuickLogin = (quickEmail) => {
     // 快捷按钮不再后台登录，而是直接填入“用户名和密码”输入框中，符合用户对显式密码登录的诉求
-    setEmail(mockEmail);
+    setEmail(quickEmail);
     setPassword("Test1234");
   };
 
@@ -46,7 +49,6 @@ export function Login() {
             <TrendingUp size={36} color="var(--accent-gold)" />
           </div>
           <h2 style={styles.systemName}>贷管家</h2>
-          <p style={styles.systemSlogan}>人民币项目制多层级资金池记账平台</p>
         </div>
 
         {/* 错误提示 */}
@@ -98,7 +100,7 @@ export function Login() {
         {/* 快速体验通道 */}
         <div style={styles.quickLoginSection}>
           <div style={styles.divider}>
-            <span style={styles.dividerText}>演示环境快捷登录</span>
+            <span style={styles.dividerText}>快捷账号登录</span>
           </div>
           
           <div style={styles.quickBtnGrid}>
@@ -106,8 +108,15 @@ export function Login() {
               onClick={() => handleQuickLogin("admin@example.com")} 
               style={{ ...styles.quickBtn, borderLeft: "4px solid var(--accent-blue)" }}
             >
-              <span style={styles.quickBtnTitle}>管理员</span>
+              <span style={styles.quickBtnTitle}>管理员 (Admin)</span>
               <span style={styles.quickBtnEmail}>admin@example.com</span>
+            </button>
+            <button 
+              onClick={() => handleQuickLogin("operator@example.com")} 
+              style={{ ...styles.quickBtn, borderLeft: "4px solid var(--accent-red)" }}
+            >
+              <span style={styles.quickBtnTitle}>经办员 (Operator)</span>
+              <span style={styles.quickBtnEmail}>operator@example.com</span>
             </button>
             <button 
               onClick={() => handleQuickLogin("zhangsan@example.com")} 
@@ -125,9 +134,9 @@ export function Login() {
             </button>
             <button 
               onClick={() => handleQuickLogin("future@example.com")} 
-              style={{ ...styles.quickBtn, borderLeft: "4px solid var(--text-muted)" }}
+              style={{ ...styles.quickBtn, borderLeft: "4px solid var(--text-muted)", gridColumn: "span 2" }}
             >
-              <span style={styles.quickBtnTitle}>LP - 未来资本</span>
+              <span style={styles.quickBtnTitle}>LP - 未来资本基金</span>
               <span style={styles.quickBtnEmail}>future@example.com</span>
             </button>
           </div>

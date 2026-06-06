@@ -170,7 +170,7 @@ export function Dashboard() {
     <div style={styles.container}>
       {/* 标题 */}
       <div style={styles.welcome}>
-        <h2>欢迎回来，管理员</h2>
+        <h2>欢迎回来</h2>
       </div>
 
       {/* 统计指标卡片组 */}

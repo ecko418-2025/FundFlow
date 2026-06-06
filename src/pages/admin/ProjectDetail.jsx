@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { querySQL } from "../../lib/db";
+import { useAuthContext } from "../../context/AuthContext";
 import { useTransactions } from "../../hooks/useTransactions";
 import { StatCard } from "../../components/ui/StatCard";
 import { DataTable } from "../../components/ui/DataTable";
@@ -22,13 +23,16 @@ import {
   History,
   Users,
   Pencil,
-  Trash2
+  Trash2,
+  Check,
+  XCircle
 } from "lucide-react";
 
 export function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { createTransaction } = useTransactions();
+  const { currentUser } = useAuthContext();
+  const { createTransaction, approveTransaction, rejectTransaction } = useTransactions();
 
   const [project, setProject] = useState(null);
   const [txs, setTxs] = useState([]);
@@ -116,7 +120,7 @@ export function ProjectDetail() {
       );
 
       const investorTxMap = {};
-      txResult.forEach(tx => {
+      txResult.filter(tx => tx.status === "approved").forEach(tx => {
         if (tx.investor_id) {
           if (!investorTxMap[tx.investor_id]) investorTxMap[tx.investor_id] = 0;
           if (tx.direction === "out") {
@@ -181,7 +185,7 @@ export function ProjectDetail() {
       const pi = projectInvestors.find(p => p.investor_id === txInvestorId);
       const investedAmt = pi ? Number(pi.invested_amount || 0) : 0;
       const cumulativeReturned = txs.filter(tx => 
-        tx.type === "return" && tx.investor_id === txInvestorId
+        tx.type === "return" && tx.investor_id === txInvestorId && tx.status === "approved"
       ).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
       
       const maxAllowed = investedAmt - cumulativeReturned;
@@ -198,6 +202,7 @@ export function ProjectDetail() {
       const pi = projectInvestors.find(p => p.investor_id === txInvestorId);
       const isPool = pi && pi.investor_type === 'pool';
       const actualPoolId = isPool ? txInvestorId : null;
+      const txStatus = currentUser?.role === "operator" ? "pending" : "approved";
 
       await createTransaction({
         poolId: actualPoolId,
@@ -209,14 +214,38 @@ export function ProjectDetail() {
         date: txDate,
         description: txDesc || `${resolvedTypeToUse === 'investment' ? '打款投放' : '项目提现回款'}-${project.name}`,
         referenceNo: txRef,
-        createdBy: "admin"
+        createdBy: currentUser?.uid || "admin",
+        actor: currentUser,
+        status: txStatus
       });
       setTxAmount(""); setTxRef(""); setTxDesc(""); setTxInvestorId("");
       setIsModalOpen(false);
-      alert("项目流水登账成功！");
+      alert(txStatus === "pending" ? "项目流水已录入，请等待管理员审核生效。" : "项目流水登账成功！");
       await loadProjectDetails();
     } catch (err) {
       alert("录入流水失败：" + err.message);
+    }
+  };
+
+  const handleApproveTx = async (txId) => {
+    if (!window.confirm("确定核准通过这笔项目流水吗？")) return;
+    try {
+      await approveTransaction(txId, currentUser);
+      await loadProjectDetails();
+      alert("审核通过！");
+    } catch (err) {
+      alert("审批失败：" + err.message);
+    }
+  };
+
+  const handleRejectTx = async (txId) => {
+    if (!window.confirm("确定要驳回这笔项目流水吗？")) return;
+    try {
+      await rejectTransaction(txId, currentUser);
+      await loadProjectDetails();
+      alert("已驳回。");
+    } catch (err) {
+      alert("驳回失败：" + err.message);
     }
   };
 
@@ -441,7 +470,40 @@ export function ProjectDetail() {
       )
     },
     { key: "reference_no", label: "凭证号", className: "mono" },
-    { key: "description", label: "摘要说明" }
+    {
+      key: "status",
+      label: "审核状态",
+      render: (v) => {
+        const map = {
+          pending: { text: "待审核", status: "warning" },
+          approved: { text: "已生效", status: "active" },
+          rejected: { text: "已驳回", status: "exited" }
+        };
+        const item = map[v] || { text: v || "已生效", status: "active" };
+        return <Badge text={item.text} status={item.status} />;
+      }
+    },
+    { key: "description", label: "摘要说明" },
+    {
+      key: "actions",
+      label: "操作",
+      align: "center",
+      render: (_, row) => {
+        if (currentUser?.role === "admin" && row.status === "pending") {
+          return (
+            <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+              <button onClick={() => handleApproveTx(row.id)} className="btn-primary" style={{ padding: "4px 8px", fontSize: "0.75rem", backgroundColor: "var(--accent-green)", borderColor: "var(--accent-green)" }}>
+                <Check size={14} />
+              </button>
+              <button onClick={() => handleRejectTx(row.id)} className="btn-secondary" style={{ padding: "4px 8px", fontSize: "0.75rem", color: "var(--accent-red)" }}>
+                <XCircle size={14} />
+              </button>
+            </div>
+          );
+        }
+        return <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>-</span>;
+      }
+    }
   ];
 
   const investorHeaders = [

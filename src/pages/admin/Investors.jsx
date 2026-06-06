@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { querySQL } from "../../lib/db";
+import { writeAuditLog } from "../../lib/audit";
+import { useAuthContext } from "../../context/AuthContext";
 import { DataTable } from "../../components/ui/DataTable";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
@@ -27,6 +29,7 @@ const IMPORT_HEADERS_MAP = {
 };
 
 export function Investors() {
+  const { currentUser } = useAuthContext();
   const [investors, setInvestors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -137,11 +140,35 @@ export function Investors() {
         ]);
       }
 
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "investors",
+        targetType: "investor",
+        targetId: editingInvestor.id,
+        targetLabel: editName,
+        status: "success",
+        message: "更新出资方信息及账号映射",
+        beforeData: editingInvestor,
+        afterData: { id: editingInvestor.id, name: editName, type: editType, email: editEmail, uid: targetUid, phone: editPhone, contact: editContact || editName, note: editNote }
+      });
+
       setIsEditModalOpen(false);
       setEditingInvestor(null);
       await fetchInvestors();
       alert("出资方信息及关联账号更新成功！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "investors",
+        targetType: "investor",
+        targetId: editingInvestor?.id,
+        targetLabel: editName,
+        status: "failure",
+        message: "更新出资方信息失败",
+        errorMessage: err.message
+      });
       alert("更新出资方失败：" + err.message);
     }
   };
@@ -171,9 +198,8 @@ export function Investors() {
         INSERT INTO investors (id, name, type, email, uid, phone, contact, note)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
-      // uid 可以暂时生成一个 mock 格式，对应 mock 登录
-      const mockUid = `uid-${name.toLowerCase().replace(/\s+/g, "")}`;
-      const actualUid = cloudbaseUid.trim() || mockUid;
+      const generatedUid = `uid-${name.toLowerCase().replace(/\s+/g, "")}`;
+      const actualUid = cloudbaseUid.trim() || generatedUid;
       
       await querySQL(sql, [
         invId,
@@ -198,6 +224,18 @@ export function Investors() {
         name
       ]);
 
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "investors",
+        targetType: "investor",
+        targetId: invId,
+        targetLabel: name,
+        status: "success",
+        message: "新增出资方并创建账号映射",
+        afterData: { id: invId, name, type, email, uid: actualUid, phone, contact: contact || name, note }
+      });
+
       setName("");
       setEmail("");
       setPhone("");
@@ -208,6 +246,17 @@ export function Investors() {
       await fetchInvestors();
       alert("出资人录入并已创建关联登录账号！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "investors",
+        targetType: "investor",
+        targetLabel: name,
+        status: "failure",
+        message: "新增出资方失败",
+        requestPayload: { name, type, email, phone, contact, note },
+        errorMessage: err.message
+      });
       alert("录入出资人失败：" + err.message);
     }
   };
@@ -309,7 +358,7 @@ export function Investors() {
       for (let i = 0; i < validatedData.length; i++) {
         const record = validatedData[i];
         const invId = `inv-${Date.now()}-${i}`;
-        const mockUid = `uid-${record.name.toLowerCase().replace(/\s+/g, "")}-${i}`;
+        const generatedUid = `uid-${record.name.toLowerCase().replace(/\s+/g, "")}-${i}`;
 
         const sql = `
           INSERT INTO investors (id, name, type, email, uid, phone, contact, note)
@@ -320,7 +369,7 @@ export function Investors() {
           record.name,
           record.type,
           record.email,
-          mockUid,
+          generatedUid,
           record.phone,
           record.contact,
           record.note
@@ -331,7 +380,7 @@ export function Investors() {
           VALUES (?, ?, 'lp', ?, ?)
         `;
         await querySQL(userSql, [
-          mockUid,
+          generatedUid,
           record.email,
           invId,
           record.name
@@ -340,9 +389,28 @@ export function Investors() {
         successCount++;
       }
 
+      await writeAuditLog({
+        actor: currentUser,
+        action: "import",
+        module: "investors",
+        targetType: "investor",
+        status: "success",
+        message: `批量导入出资方 ${successCount} 条`,
+        afterData: validatedData.map(item => ({ name: item.name, type: item.type, email: item.email }))
+      });
+
       alert(`成功导入 ${successCount} 个出资方记录，并自动创建关联登录账号！`);
       await fetchInvestors();
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "import",
+        module: "investors",
+        targetType: "investor",
+        status: "failure",
+        message: "批量导入出资方失败",
+        errorMessage: err.message
+      });
       alert("导入失败: " + err.message);
     } finally {
       setLoading(false);
@@ -539,7 +607,7 @@ export function Investors() {
                 type="text" 
                 value={cloudbaseUid}
                 onChange={(e) => setCloudbaseUid(e.target.value)}
-                placeholder="云开发控制台 UID，不填则自动生成演示 Mock UID"
+                placeholder="云开发控制台 UID，不填则生成临时 UID"
                 className="form-input"
               />
             </div>

@@ -6,12 +6,12 @@ export default defineConfig({
   base: '/fund/',
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 5190,
     strictPort: true,
     hmr: {
       protocol: 'ws',
-      host: 'localhost',
-      port: 5173
+      host: '127.0.0.1',
+      port: 5190
     }
   },
 })

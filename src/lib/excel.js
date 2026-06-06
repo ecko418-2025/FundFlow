@@ -27,6 +27,94 @@ export function exportToExcel(data, headersMap, fileName, sheetName = "数据备
 }
 
 /**
+ * 导出收益分配计算报表，保留页面上的分区结构：基本信息、直接层级预览、最终分配表与说明。
+ */
+export function exportDistributionReport({
+  targetName,
+  targetType,
+  distributionDate,
+  totalAmount,
+  isPenetrate,
+  directItems = [],
+  lpItems = [],
+  fileName = "收益分配计算表"
+}) {
+  const formatMoney = (value) => Number(value || 0);
+  const formatPct = (value) => `${Number(value || 0).toFixed(2)}%`;
+  const showDirectPreview = isPenetrate && directItems.some(item => item.entity_type === "pool");
+  const finalShareTotal = lpItems.reduce((sum, item) => sum + Number(item.effective_share || 0), 0);
+  const finalAmountTotal = lpItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const rows = [
+    ["收益分配计算表"],
+    [],
+    ["目标分配实体", targetName || "-", "实体类型", targetType === "pool" ? "资金池" : "项目"],
+    ["分配日期", distributionDate || "-", "拟分配总金额", formatMoney(totalAmount)],
+    ["分配模式", isPenetrate ? "穿透分配" : "不穿透分配", "生成时间", new Date().toLocaleString("zh-CN")],
+    []
+  ];
+
+  if (showDirectPreview) {
+    const directShareTotal = directItems.reduce((sum, item) => sum + Number(item.effective_share || 0), 0);
+    const directAmountTotal = directItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    rows.push(
+      ["直接层级分配预览（含资金池/基金）"],
+      ["直接收款主体", "主体类型", "直接份额", "直接层级金额"],
+      ...directItems.map(item => [
+        item.investor_name,
+        item.entity_type === "pool" ? "资金池/基金" : "投资人",
+        formatPct(item.effective_share),
+        formatMoney(item.amount)
+      ]),
+      ["直接层级合计", "", formatPct(directShareTotal), formatMoney(directAmountTotal)],
+      []
+    );
+  }
+
+  rows.push(
+    ["最终分配比例及应分金额计算表"],
+    ["LP 姓名/实体名称", "直接份额", "间接份额（大池穿透）", "最终有效份额", "预计实分金额"],
+    ...lpItems.map(item => [
+      `${item.investor_name}${item.entity_type === "pool" ? "（资金池）" : ""}`,
+      formatPct(item.direct_share),
+      formatPct(item.indirect_share),
+      formatPct(item.effective_share),
+      formatMoney(item.amount)
+    ]),
+    ["有效持股总计", "", "", formatPct(finalShareTotal), formatMoney(finalAmountTotal)],
+    [],
+    ["说明", isPenetrate
+      ? "已开启穿透模式：收益将沿着持股层级逐级拆解，直接汇入底层自然人/机构投资人账户。"
+      : "当前为不穿透模式：若该实体中包含母池等上级实体组织，收益将截留在母池，不会自动下发。"
+    ]
+  );
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 22 },
+    { wch: 24 },
+    { wch: 20 },
+    { wch: 20 }
+  ];
+  worksheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }
+  ];
+
+  Object.keys(worksheet).forEach((cellRef) => {
+    if (cellRef.startsWith("!")) return;
+    const cell = worksheet[cellRef];
+    if (typeof cell.v === "number") {
+      cell.z = "¥#,##0.00";
+    }
+  });
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "分配计算表");
+  XLSX.writeFile(workbook, `${fileName}.xlsx`);
+}
+
+/**
  * 从上传的 Excel 文件读取并转换为标准的字段 JSON 数据
  * @param {File} file 文件对象
  * @param {Object} headersMap 字段映射，例如 { '姓名': 'name', '邮箱': 'email' }，与导出的映射刚好相反

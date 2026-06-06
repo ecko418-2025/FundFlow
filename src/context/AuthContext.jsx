@@ -1,17 +1,52 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { auth } from "../lib/cloudbase";
 import { querySQL } from "../lib/db";
+import { writeAuditLog } from "../lib/audit";
 
 const AuthContext = createContext(null);
 
-// Mock 账号定义
-const MOCK_USERS = {
-  "admin@example.com": { uid: "uid-admin", email: "admin@example.com", role: "admin", displayName: "张总（管理员）", investorId: null },
-  "ecko418@gmail.com": { uid: "uid-ecko418", email: "ecko418@gmail.com", role: "admin", displayName: "ecko418（管理员）", investorId: null },
-  "zhangsan@example.com": { uid: "uid-zhangsan", email: "zhangsan@example.com", role: "lp", displayName: "张三（出资人）", investorId: "inv-1" },
-  "lisi@example.com": { uid: "uid-lisi", email: "lisi@example.com", role: "lp", displayName: "李四（出资人）", investorId: "inv-2" },
-  "future@example.com": { uid: "uid-future", email: "future@example.com", role: "lp", displayName: "未来资本（出资人）", investorId: "inv-3" }
+const normalizeEmail = (email = "") => email.trim().toLowerCase();
+
+const getFallbackRole = (email = "") => {
+  const normalizedEmail = normalizeEmail(email);
+  if (normalizedEmail.includes("admin") || normalizedEmail === "ecko418@gmail.com") return "admin";
+  if (normalizedEmail.includes("operator")) return "operator";
+  return "lp";
 };
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function getStableAuthUser(loginState) {
+  for (let i = 0; i < 5; i++) {
+    const user = loginState?.user || auth.currentUser;
+    if (user?.uid) return user;
+    await sleep(120);
+  }
+  throw new Error("登录状态同步中，请稍后再试");
+}
+
+async function buildLoggedUser(user, fallbackEmail = "") {
+  let dbUser = null;
+  const email = user.email || fallbackEmail;
+  try {
+    const dbUsers = await querySQL("SELECT * FROM users WHERE uid = ?", [user.uid]);
+    dbUser = dbUsers && dbUsers[0];
+    if (!dbUser && email) {
+      const emailUsers = await querySQL("SELECT * FROM users WHERE email = ?", [email]);
+      dbUser = emailUsers && emailUsers[0];
+    }
+  } catch (err) {
+    console.warn("登录成功，但读取用户角色失败，已使用邮箱兜底角色。", err.message);
+  }
+
+  return {
+    uid: user.uid,
+    email,
+    role: dbUser ? dbUser.role : getFallbackRole(email),
+    displayName: dbUser ? dbUser.display_name : (user.displayName || email),
+    investorId: dbUser ? dbUser.investor_id : null
+  };
+}
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
@@ -19,34 +54,15 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const useMock = localStorage.getItem("USE_MOCK") !== "false";
-    const savedMockUser = localStorage.getItem("MOCK_USER");
-    if (useMock && savedMockUser) {
-      setCurrentUser(JSON.parse(savedMockUser));
-      setLoading(false);
-      return;
-    }
-
     const checkLogin = async () => {
       try {
         const loginState = auth.hasLoginState();
         if (loginState) {
-          const user = auth.currentUser;
-          
-          // 查询数据库中的用户角色及关联出资人ID
-          const dbUsers = await querySQL("SELECT * FROM users WHERE uid = ?", [user.uid]);
-          const dbUser = dbUsers && dbUsers[0];
-
-          setCurrentUser({
-            uid: user.uid,
-            email: user.email,
-            role: dbUser ? dbUser.role : (user.email?.includes("admin") ? "admin" : "lp"),
-            displayName: dbUser ? dbUser.display_name : (user.displayName || user.email),
-            investorId: dbUser ? dbUser.investor_id : null
-          });
+          const user = await getStableAuthUser(loginState);
+          setCurrentUser(await buildLoggedUser(user));
         }
       } catch (e) {
-        console.warn("未连接云开发 Auth，运行在演示模式。");
+        console.warn("未连接云开发 Auth。");
       } finally {
         setLoading(false);
       }
@@ -58,37 +74,36 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setLoading(true);
     setError(null);
+    const normalizedEmail = normalizeEmail(email);
 
-    // 1. 尝试 Mock 账户登录（用于预览，仅在 Mock 模式下生效）
-    const useMock = localStorage.getItem("USE_MOCK") !== "false";
-    if (useMock && MOCK_USERS[email]) {
-      const mockUser = MOCK_USERS[email];
-      localStorage.setItem("MOCK_USER", JSON.stringify(mockUser));
-      setCurrentUser(mockUser);
-      setLoading(false);
-      return mockUser;
-    }
-
-    // 2. 尝试云开发真实登录
     try {
-      await auth.signInWithEmailAndPassword(email, password);
-      const user = auth.currentUser;
-      
-      // 查询数据库获取真实角色和关联出资人ID
-      const dbUsers = await querySQL("SELECT * FROM users WHERE uid = ?", [user.uid]);
-      const dbUser = dbUsers && dbUsers[0];
-
-      const loggedUser = {
-        uid: user.uid,
-        email: user.email,
-        role: dbUser ? dbUser.role : (user.email?.includes("admin") ? "admin" : "lp"),
-        displayName: dbUser ? dbUser.display_name : (user.displayName || user.email),
-        investorId: dbUser ? dbUser.investor_id : null
-      };
+      const loginState = await auth.signInWithEmailAndPassword(email, password);
+      const user = await getStableAuthUser(loginState);
+      const loggedUser = await buildLoggedUser(user, normalizedEmail);
       setCurrentUser(loggedUser);
+      await writeAuditLog({
+        actor: loggedUser,
+        action: "login",
+        module: "auth",
+        targetType: "user",
+        targetId: loggedUser.uid,
+        targetLabel: loggedUser.email,
+        status: "success",
+        message: "用户登录成功"
+      });
       setLoading(false);
       return loggedUser;
     } catch (err) {
+      await writeAuditLog({
+        actor: { email: normalizedEmail },
+        action: "login",
+        module: "auth",
+        targetType: "user",
+        targetLabel: normalizedEmail,
+        status: "failure",
+        message: "用户登录失败",
+        errorMessage: err.message
+      });
       setLoading(false);
       setError(err.message || "登录失败，邮箱或密码错误");
       throw err;
@@ -97,10 +112,20 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     setLoading(true);
-    localStorage.removeItem("MOCK_USER");
+    const userBeforeLogout = currentUser;
     setCurrentUser(null);
     try {
       await auth.signOut();
+      await writeAuditLog({
+        actor: userBeforeLogout,
+        action: "logout",
+        module: "auth",
+        targetType: "user",
+        targetId: userBeforeLogout?.uid,
+        targetLabel: userBeforeLogout?.email,
+        status: "success",
+        message: "用户退出登录"
+      });
     } catch (e) {
       // 忽略登出报错
     }

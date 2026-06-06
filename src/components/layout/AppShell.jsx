@@ -4,17 +4,17 @@ import { TopBar } from "./TopBar";
 
 export function AppShell({ user, onLogout, children }) {
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="app-shell">
       {/* 侧边栏 */}
       <Sidebar user={user} onLogout={onLogout} />
       
       {/* 右侧主区域 */}
-      <div style={styles.mainArea}>
+      <div style={styles.mainArea} className="app-main-area">
         {/* 顶栏 */}
         <TopBar />
         
         {/* 主体页面内容 */}
-        <main style={styles.content}>
+        <main style={styles.content} className="app-content">
           {children}
         </main>
       </div>

@@ -16,12 +16,19 @@ import { Transactions } from "./pages/admin/Transactions";
 import { Distribution } from "./pages/admin/Distribution";
 import { Reports } from "./pages/admin/Reports";
 import { Settings } from "./pages/admin/Settings";
+import { AuditLogs } from "./pages/admin/AuditLogs";
 
 import { LPDashboard } from "./pages/lp/LPDashboard";
 import { LPStatement } from "./pages/lp/LPStatement";
 
 function AppContent() {
   const { currentUser, loading, logout } = useAuthContext();
+
+  const getRoleHome = (role) => {
+    if (role === "admin") return "/admin";
+    if (role === "operator") return "/admin";
+    return "/lp";
+  };
 
   if (loading) {
     return (
@@ -37,9 +44,10 @@ function AppContent() {
     if (!currentUser) {
       return <Navigate to="/login" replace />;
     }
-    if (allowedRole && currentUser.role !== allowedRole) {
+    const allowedRoles = Array.isArray(allowedRole) ? allowedRole : [allowedRole];
+    if (allowedRole && !allowedRoles.includes(currentUser.role)) {
       // 角色不匹配，重定向到合适的主页
-      return <Navigate to={currentUser.role === "admin" ? "/admin" : "/lp"} replace />;
+      return <Navigate to={getRoleHome(currentUser.role)} replace />;
     }
     return children;
   };
@@ -50,14 +58,14 @@ function AppContent() {
         {/* 登录页面 */}
         <Route 
           path="/login" 
-          element={currentUser ? <Navigate to={currentUser.role === "admin" ? "/admin" : "/lp"} replace /> : <Login />} 
+          element={currentUser ? <Navigate to={getRoleHome(currentUser.role)} replace /> : <Login />} 
         />
 
         {/* 管理员路由分支 (Admin Panel) */}
         <Route 
           path="/admin" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
                 <Dashboard />
               </AppShell>
@@ -67,7 +75,7 @@ function AppContent() {
         <Route 
           path="/admin/pools" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
                 <Pools />
               </AppShell>
@@ -77,7 +85,7 @@ function AppContent() {
         <Route 
           path="/admin/pools/:id" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
                 <PoolDetail />
               </AppShell>
@@ -107,7 +115,7 @@ function AppContent() {
         <Route 
           path="/admin/projects" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
                 <Projects />
               </AppShell>
@@ -117,7 +125,7 @@ function AppContent() {
         <Route 
           path="/admin/projects/:id" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
                 <ProjectDetail />
               </AppShell>
@@ -127,7 +135,7 @@ function AppContent() {
         <Route 
           path="/admin/transactions" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
                 <Transactions />
               </AppShell>
@@ -137,7 +145,7 @@ function AppContent() {
         <Route 
           path="/admin/distribution" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
                 <Distribution />
               </AppShell>
@@ -166,6 +174,17 @@ function AppContent() {
           } 
         />
 
+        <Route
+          path="/admin/audit-logs"
+          element={
+            <PrivateRoute allowedRole="admin">
+              <AppShell user={currentUser} onLogout={logout}>
+                <AuditLogs />
+              </AppShell>
+            </PrivateRoute>
+          }
+        />
+
         {/* 出资人路由分支 (LP Wealth Portal) */}
         <Route 
           path="/lp" 
@@ -191,7 +210,7 @@ function AppContent() {
         {/* 默认首页，根据登录状态决定分流 */}
         <Route 
           path="*" 
-          element={<Navigate to={currentUser ? (currentUser.role === "admin" ? "/admin" : "/lp") : "/login"} replace />} 
+          element={<Navigate to={currentUser ? getRoleHome(currentUser.role) : "/login"} replace />} 
         />
       </Routes>
     </HashRouter>

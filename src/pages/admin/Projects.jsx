@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { querySQL } from "../../lib/db";
+import { writeAuditLog } from "../../lib/audit";
+import { useAuthContext } from "../../context/AuthContext";
 import { usePools } from "../../hooks/usePools";
 import { DataTable } from "../../components/ui/DataTable";
 import { Modal } from "../../components/ui/Modal";
@@ -36,6 +38,7 @@ const IMPORT_HEADERS_MAP = {
 
 export function Projects() {
   const navigate = useNavigate();
+  const { currentUser } = useAuthContext();
   const { pools } = usePools();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -215,6 +218,18 @@ export function Projects() {
         contractNo || ""
       ]);
 
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "projects",
+        targetType: "project",
+        targetId: projectId,
+        targetLabel: name,
+        status: "success",
+        message: "创建项目",
+        afterData: { id: projectId, name, status, committedAmount: Number(committedAmount), startDate, endDate, contractNo, tags }
+      });
+
       setProjectId("");
       setName("");
       setContractNo("");
@@ -228,6 +243,18 @@ export function Projects() {
       await fetchProjects();
       alert("新投资组合项目立项登记成功！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "projects",
+        targetType: "project",
+        targetId: projectId,
+        targetLabel: name,
+        status: "failure",
+        message: "创建项目失败",
+        requestPayload: { projectId, name, status, committedAmount, startDate, endDate, contractNo },
+        errorMessage: err.message
+      });
       alert("立项登记失败：" + err.message);
     }
   };
@@ -284,11 +311,34 @@ export function Projects() {
         editProjContractNo || "",
         editingProject.id
       ]);
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "projects",
+        targetType: "project",
+        targetId: editingProject.id,
+        targetLabel: editProjName,
+        status: "success",
+        message: "更新项目信息",
+        beforeData: editingProject,
+        afterData: { id: editingProject.id, name: editProjName, status: editProjStatus, committedAmount: Number(editProjCommitted), tags: tagsArray }
+      });
       setIsEditProjectOpen(false);
       setEditingProject(null);
       await fetchProjects();
       alert("项目信息已更新！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "projects",
+        targetType: "project",
+        targetId: editingProject?.id,
+        targetLabel: editProjName,
+        status: "failure",
+        message: "更新项目信息失败",
+        errorMessage: err.message
+      });
       alert("更新失败：" + err.message);
     }
   };
@@ -452,9 +502,28 @@ export function Projects() {
         successCount++;
       }
 
+      await writeAuditLog({
+        actor: currentUser,
+        action: "import",
+        module: "projects",
+        targetType: "project",
+        status: "success",
+        message: `批量导入项目 ${successCount} 条`,
+        afterData: validatedData.map(item => ({ id: item.id, name: item.name, status: item.status }))
+      });
+
       alert(`成功导入 ${successCount} 个项目记录！`);
       await fetchProjects();
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "import",
+        module: "projects",
+        targetType: "project",
+        status: "failure",
+        message: "批量导入项目失败",
+        errorMessage: err.message
+      });
       alert("导入失败: " + err.message);
     } finally {
       setLoading(false);
@@ -463,9 +532,10 @@ export function Projects() {
   };
 
   const headers = [
-    { 
-      key: "name", 
-      label: "项目名称", 
+    {
+      key: "name",
+      label: "项目名称",
+      width: "260px",
       summaryRender: (v) => <span style={{ fontWeight: 600, color: "var(--accent-gold)" }}>{v}</span>,
       render: (v, row) => {
         let tags = [];
@@ -473,26 +543,26 @@ export function Projects() {
           tags = typeof row.tags === "string" ? JSON.parse(row.tags) : row.tags;
         } catch(e) {}
         return (
-          <div>
-            <span style={{ fontWeight: 600 }}>{v}</span>
+          <div style={styles.projectNameCell}>
+            <span style={styles.projectNameText}>{v}</span>
             {Array.isArray(tags) && tags.length > 0 && (
-              <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+              <div style={styles.projectTagRow}>
                 {tags.map((t, i) => {
                   const category = systemTags.find(cat => cat.tags && cat.tags.includes(t));
                   const color = category ? category.color : "var(--text-secondary)";
                   const bgColor = category ? `${category.color}20` : "var(--bg-tertiary)";
                   const borderColor = category ? `${category.color}40` : "var(--border)";
                   return (
-                    <span 
-                      key={i} 
-                      className="badge" 
-                      style={{ 
-                        fontSize: '0.65rem', 
-                        padding: '2px 6px', 
-                        backgroundColor: bgColor, 
-                        color: color,
+                    <span
+                      key={i}
+                      className="badge"
+                      style={{
+                        fontSize: "0.64rem",
+                        padding: "2px 5px",
+                        backgroundColor: bgColor,
+                        color,
                         border: `1px solid ${borderColor}`,
-                        textTransform: 'none' 
+                        textTransform: "none"
                       }}
                     >
                       {t}
@@ -505,62 +575,53 @@ export function Projects() {
         );
       }
     },
-    { key: "id", label: "项目 ID", render: (v) => <span className="mono badge badge-active">{v}</span> },
-    { 
-      key: "investors", 
-      label: "出资方", 
-      render: (v, row) => {
-        if (!v || v.length === 0) return <span style={{ color: "var(--text-secondary)" }}>-</span>;
-        if (v.length > 2) {
-          return (
-            <span style={{ color: "var(--accent-blue)" }} title={v.join("，")}>
-              {v.slice(0, 2).join("，")} 等 {v.length} 方
-            </span>
-          );
-        }
-        return <span style={{ color: "var(--accent-blue)" }}>{v.join("，")}</span>;
-      } 
-    },
-    { key: "status", label: "立项状态", render: (v) => {
+    { key: "id", label: "项目 ID", width: "160px", render: (v) => <span className="mono badge badge-active" style={styles.projectIdBadge}>{v}</span> },
+    {
+      key: "status",
+      label: "立项状态",
+      width: "110px",
+      render: (v) => {
         const labels = { pre: "投前考察", active: "存续管理", exited: "退出清算", archived: "项目归档" };
         return <Badge text={labels[v] || v} status={v} />;
       }
     },
-    { key: "committed_amount", label: "计划投放额", render: (v) => formatCNY(v, false) },
-    { key: "invested_amount", label: "已打款金额", render: (v) => formatCNY(v, false) },
-    { key: "returned_amount", label: "已回款金额", render: (v) => formatCNY(v, false) },
-    { key: "start_date", label: "起始日期", render: (v) => formatDate(v) },
-    { 
-      key: "expected_end_date", 
-      label: "预计结束日期", 
+    { key: "committed_amount", label: "计划投放额", align: "right", width: "130px", render: (v) => <span className="mono amt-bold">{formatCNY(v, false)}</span> },
+    { key: "invested_amount", label: "已打款金额", align: "right", width: "130px", render: (v) => <span className="mono amt-out">{formatCNY(v, false)}</span> },
+    { key: "returned_amount", label: "已回款金额", align: "right", width: "130px", render: (v) => <span className="mono amt-in">{formatCNY(v, false)}</span> },
+    { key: "start_date", label: "起始日期", width: "110px", render: (v) => <span className="mono">{formatDate(v)}</span> },
+    {
+      key: "expected_end_date",
+      label: "预计结束日期",
+      width: "150px",
       render: (v) => {
         if (!v) return "-";
         const isExpired = new Date(v) < new Date();
         return (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+          <span style={styles.dateWithFlag}>
             <span className="mono" style={{ color: isExpired ? "var(--accent-red)" : "inherit" }}>{formatDate(v)}</span>
-            {isExpired && <span className="badge badge-danger" style={{ padding: "2px 6px", fontSize: "0.7rem", textTransform: "none" }}>已到期</span>}
+            {isExpired && <span className="badge badge-danger" style={styles.expiredBadge}>已到期</span>}
           </span>
         );
       }
     },
-    { 
-      key: "id", 
-      label: "操作", 
-      align: "right", 
+    {
+      key: "id",
+      label: "操作",
+      align: "right",
+      width: "96px",
       render: (v, row) => (
-        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-          <button 
+        <div style={styles.rowActions}>
+          <button
             onClick={(e) => handleOpenEditProject(row, e)}
             className="btn-secondary"
-            style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "4px" }}
+            style={styles.compactActionBtn}
           >
             <Pencil size={14} />
             <span>编辑</span>
           </button>
         </div>
       )
-    },
+    }
   ];
 
   return (
@@ -660,7 +721,7 @@ export function Projects() {
         </div>
       </div>
 
-      <div className="glass-card no-hover" style={{ padding: "20px" }}>
+      <div className="glass-card no-hover" style={styles.projectTableCard}>
         {(() => {
           const totalCommitted = filteredProjects.reduce((sum, p) => sum + (Number(p.committed_amount) || 0), 0);
           const totalInvested = filteredProjects.reduce((sum, p) => sum + (Number(p.invested_amount) || 0), 0);
@@ -1082,6 +1143,57 @@ const styles = {
     color: "var(--text-primary)",
     fontSize: "0.85rem",
     fontWeight: "500"
+  },
+  projectTableCard: {
+    padding: "16px",
+    overflow: "hidden"
+  },
+  projectNameCell: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    minWidth: 0
+  },
+  projectNameText: {
+    fontWeight: 700,
+    color: "var(--text-primary)",
+    lineHeight: 1.25
+  },
+  projectTagRow: {
+    display: "flex",
+    gap: "4px",
+    flexWrap: "wrap"
+  },
+  projectIdBadge: {
+    maxWidth: "150px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    borderRadius: "5px",
+    textTransform: "none"
+  },
+  dateWithFlag: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    flexWrap: "wrap"
+  },
+  expiredBadge: {
+    padding: "2px 6px",
+    fontSize: "0.68rem",
+    textTransform: "none",
+    borderRadius: "5px"
+  },
+  rowActions: {
+    display: "flex",
+    gap: "8px",
+    justifyContent: "flex-end"
+  },
+  compactActionBtn: {
+    padding: "6px 10px",
+    fontSize: "0.78rem",
+    gap: "4px",
+    borderRadius: "6px"
   }
 };
 export default Projects;

@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { querySQL } from "../../lib/db";
+import { writeAuditLog } from "../../lib/audit";
+import { useAuthContext } from "../../context/AuthContext";
 import { Settings as SettingsIcon, Plus, X, Tag, Database as DatabaseIcon, RefreshCw } from "lucide-react";
 
 export function Settings() {
+  const { currentUser } = useAuthContext();
   const [systemTags, setSystemTags] = useState([]);
   const [loading, setLoading] = useState(false);
   
@@ -24,6 +27,7 @@ export function Settings() {
         WHERE investor_id IS NULL 
           AND pool_id IS NOT NULL 
           AND (type = 'investment' OR type = 'return')
+          AND status = 'approved'
       `);
       
       // b. 确保新模型下的母池注资流水的 target 指向正确
@@ -32,14 +36,14 @@ export function Settings() {
       // 1. 重算 projects
       await querySQL(`
         UPDATE projects SET
-          invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = projects.id AND type = 'investment'), 0),
-          returned_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = projects.id AND type = 'return'), 0)
+          invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = projects.id AND type = 'investment' AND status = 'approved'), 0),
+          returned_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = projects.id AND type = 'return' AND status = 'approved'), 0)
       `);
       
       // 2. 重算 project_investors
       await querySQL(`
         UPDATE project_investors SET
-          invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = project_investors.project_id AND investor_id = project_investors.investor_id AND type = 'investment'), 0)
+          invested_amount = COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = project_investors.project_id AND investor_id = project_investors.investor_id AND type = 'investment' AND status = 'approved'), 0)
       `);
 
       // 3. 重算 pool_members (关键：统一统计资本注入，包含实缴和历史划入)
@@ -53,18 +57,56 @@ export function Settings() {
                 OR (related_pool_id = pool_members.investor_id AND type = 'pool_transfer_in')
               )
               AND type IN ('capital_call', 'pool_transfer_in')
+              AND status = 'approved'
           ), 0)
+      `);
+
+      await querySQL(`
+        UPDATE pool_members pm
+        JOIN (
+          SELECT pool_id, SUM(called_amount) AS total_called
+          FROM pool_members
+          WHERE status = 'active'
+          GROUP BY pool_id
+        ) totals ON totals.pool_id = pm.pool_id
+        SET pm.share_pct = CASE
+          WHEN totals.total_called > 0 THEN pm.called_amount / totals.total_called * 100
+          ELSE 0
+        END
+        WHERE pm.status = 'active'
       `);
 
       // 4. 重算 pools
       await querySQL(`
         UPDATE pools SET
-          available_balance = COALESCE((SELECT SUM(CASE WHEN direction = 'in' THEN amount ELSE -amount END) FROM transactions WHERE pool_id = pools.id), 0)
+          available_balance = COALESCE((SELECT SUM(CASE WHEN direction = 'in' THEN amount ELSE -amount END) FROM transactions WHERE pool_id = pools.id AND status = 'approved'), 0)
       `);
+
+      await writeAuditLog({
+        actor: currentUser,
+        action: "reconcile",
+        module: "settings",
+        targetType: "system",
+        targetId: "global_financial_stats",
+        targetLabel: "全局财务数据校准",
+        status: "success",
+        message: "执行全局财务数据重算与校准"
+      });
 
       alert("校准成功！已从底层流水表全量重新汇总并覆写所有统计数据（包括：项目已投/已回、出资人各项目实缴、资金池成员累计实缴、资金池可用余额）。");
     } catch (err) {
       console.error("Reconcile failed", err);
+      await writeAuditLog({
+        actor: currentUser,
+        action: "reconcile",
+        module: "settings",
+        targetType: "system",
+        targetId: "global_financial_stats",
+        targetLabel: "全局财务数据校准",
+        status: "failure",
+        message: "全局财务数据重算与校准失败",
+        errorMessage: err.message
+      });
       alert("校准失败：" + err.message);
     } finally {
       setReconciling(false);

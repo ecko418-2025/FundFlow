@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { querySQL } from "../lib/db";
+import { writeAuditLog } from "../lib/audit";
 
 export function useDistribution() {
   const [loading, setLoading] = useState(false);
@@ -41,7 +42,7 @@ export function useDistribution() {
   };
 
   /**
-   * 提交分配方案（草稿或确认）
+   * 提交分配方案（待审核或确认）
    */
   const createDistribution = async (dist, items) => {
     setLoading(true);
@@ -63,7 +64,7 @@ export function useDistribution() {
         dist.totalAmount,
         dist.distributionDate,
         dist.description || "",
-        dist.status, // draft / confirmed
+        dist.status, // pending / confirmed / rejected
         isConfirmed ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null
       ]);
 
@@ -89,9 +90,32 @@ export function useDistribution() {
 
       // 不再自动扣减或增加任何实体（池子、项目）的真实余额。仅作为分配台账记录。
 
+      await writeAuditLog({
+        actor: dist.actor,
+        action: "create",
+        module: "distributions",
+        targetType: "distribution",
+        targetId: distId,
+        targetLabel: dist.description || distId,
+        status: "success",
+        message: dist.status === "pending" ? "提交收益分配方案（待审核）" : "创建收益分配方案（已确认）",
+        afterData: { id: distId, ...dist, items },
+        requestPayload: dist
+      });
+
       return distId;
     } catch (err) {
       console.error("创建分配失败:", err);
+      await writeAuditLog({
+        actor: dist.actor,
+        action: "create",
+        module: "distributions",
+        targetType: "distribution",
+        status: "failure",
+        message: "创建收益分配方案失败",
+        requestPayload: { ...dist, items },
+        errorMessage: err.message
+      });
       setError(err.message || "创建分配记录失败");
       throw err;
     } finally {
@@ -99,15 +123,122 @@ export function useDistribution() {
     }
   };
 
-  const deleteDistribution = async (distId) => {
+  const approveDistribution = async (distId, actor) => {
     setLoading(true);
     setError(null);
     try {
+      const before = await querySQL(`SELECT * FROM distributions WHERE id = ?`, [distId]);
+      const dist = before[0] || {};
+      await querySQL(
+        `UPDATE distributions SET status = 'confirmed', confirmed_at = ? WHERE id = ?`,
+        [new Date().toISOString().slice(0, 19).replace('T', ' '), distId]
+      );
+      await writeAuditLog({
+        actor,
+        action: "approve",
+        module: "distributions",
+        targetType: "distribution",
+        targetId: distId,
+        targetLabel: dist.description || distId,
+        status: "success",
+        message: "审核通过收益分配方案",
+        beforeData: dist,
+        afterData: { ...dist, status: "confirmed" }
+      });
+      return true;
+    } catch (err) {
+      console.error("审核分配失败:", err);
+      await writeAuditLog({
+        actor,
+        action: "approve",
+        module: "distributions",
+        targetType: "distribution",
+        targetId: distId,
+        status: "failure",
+        message: "审核收益分配方案失败",
+        errorMessage: err.message
+      });
+      setError(err.message || "审核分配失败");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const rejectDistribution = async (distId, actor) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const before = await querySQL(`SELECT * FROM distributions WHERE id = ?`, [distId]);
+      const dist = before[0] || {};
+      await querySQL(
+        `UPDATE distributions SET status = 'rejected', confirmed_at = NULL WHERE id = ?`,
+        [distId]
+      );
+      await writeAuditLog({
+        actor,
+        action: "reject",
+        module: "distributions",
+        targetType: "distribution",
+        targetId: distId,
+        targetLabel: dist.description || distId,
+        status: "success",
+        message: "驳回收益分配方案",
+        beforeData: dist,
+        afterData: { ...dist, status: "rejected" }
+      });
+      return true;
+    } catch (err) {
+      console.error("驳回分配失败:", err);
+      await writeAuditLog({
+        actor,
+        action: "reject",
+        module: "distributions",
+        targetType: "distribution",
+        targetId: distId,
+        status: "failure",
+        message: "驳回收益分配方案失败",
+        errorMessage: err.message
+      });
+      setError(err.message || "驳回分配失败");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteDistribution = async (distId, actor) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const before = await querySQL(`SELECT * FROM distributions WHERE id = ?`, [distId]);
+      const items = await querySQL(`SELECT * FROM distribution_items WHERE distribution_id = ?`, [distId]);
       await querySQL(`DELETE FROM distribution_items WHERE distribution_id = ?`, [distId]);
       await querySQL(`DELETE FROM distributions WHERE id = ?`, [distId]);
+      await writeAuditLog({
+        actor,
+        action: "delete",
+        module: "distributions",
+        targetType: "distribution",
+        targetId: distId,
+        targetLabel: before[0]?.description || distId,
+        status: "success",
+        message: "删除收益分配方案",
+        beforeData: { distribution: before[0], items }
+      });
       return true;
     } catch (err) {
       console.error("删除分配记录失败:", err);
+      await writeAuditLog({
+        actor,
+        action: "delete",
+        module: "distributions",
+        targetType: "distribution",
+        targetId: distId,
+        status: "failure",
+        message: "删除收益分配方案失败",
+        errorMessage: err.message
+      });
       setError(err.message || "删除分配记录失败");
       throw err;
     } finally {
@@ -121,6 +252,8 @@ export function useDistribution() {
     getDistributions,
     getDistributionDetails,
     createDistribution,
+    approveDistribution,
+    rejectDistribution,
     deleteDistribution
   };
 }

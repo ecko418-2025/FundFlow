@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useAuthContext } from "../../context/AuthContext";
 import { usePools } from "../../hooks/usePools";
 import { DataTable } from "../../components/ui/DataTable";
 import { Modal } from "../../components/ui/Modal";
@@ -10,6 +11,7 @@ import { Plus, Link2, Eye, Pencil, Search } from "lucide-react";
 
 export function Pools() {
   const navigate = useNavigate();
+  const { currentUser } = useAuthContext();
   const { pools, loading, createPool, addPoolInvestment, updatePool } = usePools();
   
   // 模态弹窗控制
@@ -120,7 +122,8 @@ export function Pools() {
         type: poolType,
         startDate: startDate || null,
         endDate: endDate || null,
-        createdBy: "admin"
+        createdBy: currentUser?.uid || "admin",
+        actor: currentUser
       });
       // 重置表单并关闭
       setPoolId("");
@@ -151,9 +154,11 @@ export function Pools() {
       await addPoolInvestment({
         parentPoolId,
         childPoolId,
+        committedAmount: Number(investedAmount),
         investedAmount: Number(investedAmount),
         sharePct: Number(sharePct),
-        note: linkNote
+        note: linkNote,
+        actor: currentUser
       });
       // 重置
       setParentPoolId("");
@@ -202,7 +207,8 @@ export function Pools() {
         type: editPoolType,
         status: editPoolStatus,
         startDate: editStartDate || null,
-        endDate: editEndDate || null
+        endDate: editEndDate || null,
+        actor: currentUser
       });
       setIsEditModalOpen(false);
       setEditingPool(null);

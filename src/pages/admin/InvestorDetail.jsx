@@ -85,7 +85,7 @@ export function InvestorDetail() {
           JOIN distributions d ON di.distribution_id = d.id 
           LEFT JOIN pools p ON d.pool_id = p.id 
           LEFT JOIN projects pr ON d.project_id = pr.id
-          WHERE di.investor_id = ?
+          WHERE di.investor_id = ? AND d.status = 'confirmed'
           ORDER BY d.distribution_date DESC
         `, [id]);
         setDistributions(distResult);

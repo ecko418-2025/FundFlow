@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAuthContext } from "../../context/AuthContext";
 import { usePools } from "../../hooks/usePools";
 import { useTransactions } from "../../hooks/useTransactions";
 import { useDistribution } from "../../hooks/useDistribution";
@@ -26,6 +27,7 @@ import {
 export function PoolDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { currentUser } = useAuthContext();
   const { getPoolDetail, addPoolMember, addPoolInvestment, updatePoolMember, updatePool, removePoolMember } = usePools();
   const { getTransactions } = useTransactions();
   const { getDistributions, getDistributionDetails } = useDistribution();
@@ -182,9 +184,9 @@ export function PoolDetail() {
     try {
       for (const member of validMembers) {
         if (member.type === 'investor') {
-          await addPoolMember({ poolId: id, investorId: member.id, committedAmount: Number(member.amount) });
+          await addPoolMember({ poolId: id, investorId: member.id, committedAmount: Number(member.amount), actor: currentUser });
         } else if (member.type === 'pool') {
-          await addPoolInvestment({ parentPoolId: member.id, childPoolId: id, committedAmount: Number(member.amount) });
+          await addPoolInvestment({ parentPoolId: member.id, childPoolId: id, committedAmount: Number(member.amount), actor: currentUser });
         }
       }
       setIsAddMemberOpen(false);
@@ -210,7 +212,8 @@ export function PoolDetail() {
     }
     try {
       await updatePoolMember(id, editingMember.investor_id, {
-        committedAmount: Number(editMemberCommitted)
+        committedAmount: Number(editMemberCommitted),
+        actor: currentUser
       });
       setIsEditMemberOpen(false);
       setEditingMember(null);
@@ -248,7 +251,8 @@ export function PoolDetail() {
         type: editPoolType,
         status: editPoolStatus,
         startDate: editStartDate || null,
-        endDate: editEndDate || null
+        endDate: editEndDate || null,
+        actor: currentUser
       });
       setIsEditPoolOpen(false);
       await loadPoolDetails();
@@ -268,7 +272,7 @@ export function PoolDetail() {
       return;
     }
     try {
-      await removePoolMember(detail.pool.id, member.investor_id);
+      await removePoolMember(detail.pool.id, member.investor_id, currentUser);
       await loadPoolDetails();
       alert("出资人已移除！");
     } catch (err) {
@@ -450,7 +454,11 @@ export function PoolDetail() {
         return <span className="mono amt-bold" style={{ color: "var(--accent-green)" }}>+{formatCNY(v, false)}</span>;
       }
     },
-    { key: "status", label: "状态", render: (v) => <Badge text={v === "confirmed" ? "已确认" : "草稿"} status={v} /> }
+    { key: "status", label: "状态", render: (v) => {
+        const labels = { pending: "待审核", confirmed: "已确认", rejected: "已驳回", draft: "草稿" };
+        return <Badge text={labels[v] || v} status={v} />;
+      }
+    }
   ];
 
   return (

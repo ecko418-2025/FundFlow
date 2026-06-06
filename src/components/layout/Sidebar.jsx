@@ -10,7 +10,8 @@ import {
   FileText,
   LogOut,
   Layers,
-  Settings
+  Settings,
+  ShieldCheck
 } from "lucide-react";
 
 export function Sidebar({ user, onLogout }) {
@@ -24,6 +25,7 @@ export function Sidebar({ user, onLogout }) {
     { name: "项目管理", path: "/admin/projects", icon: Briefcase },
     { name: "核心流水账", path: "/admin/transactions", icon: DollarSign },
     { name: "收益分配", path: "/admin/distribution", icon: PieChart },
+    { name: "操作安全日志", path: "/admin/audit-logs", icon: ShieldCheck },
     { name: "系统设置", path: "/admin/settings", icon: Settings }
   ];
 
@@ -32,7 +34,21 @@ export function Sidebar({ user, onLogout }) {
     { name: "对账账单", path: "/lp/statement", icon: FileText }
   ];
 
-  const currentMenu = role === "admin" ? adminMenu : lpMenu;
+  const operatorMenu = [
+    { name: "总览数据", path: "/admin", icon: LayoutDashboard },
+    { name: "资金池管理", path: "/admin/pools", icon: Layers },
+    { name: "项目管理", path: "/admin/projects", icon: Briefcase },
+    { name: "核心流水账", path: "/admin/transactions", icon: DollarSign },
+    { name: "收益分配", path: "/admin/distribution", icon: PieChart }
+  ];
+
+  const roleLabelMap = {
+    admin: "系统管理员",
+    operator: "财务经办员",
+    lp: "LP 投资人"
+  };
+
+  const currentMenu = role === "admin" ? adminMenu : role === "operator" ? operatorMenu : lpMenu;
 
   return (
     <aside style={styles.sidebar}>
@@ -73,7 +89,7 @@ export function Sidebar({ user, onLogout }) {
           </div>
           <div style={styles.userDetails}>
             <div style={styles.userName}>{user?.displayName || "未知用户"}</div>
-            <div style={styles.userRole}>{role === "admin" ? "系统管理员" : "LP 投资人"}</div>
+            <div style={styles.userRole}>{roleLabelMap[role] || "未知角色"}</div>
           </div>
         </div>
         <button onClick={onLogout} style={styles.logoutBtn}>
