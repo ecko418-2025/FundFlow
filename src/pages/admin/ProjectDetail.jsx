@@ -230,9 +230,10 @@ export function ProjectDetail() {
   const handleApproveTx = async (txId) => {
     if (!window.confirm("确定核准通过这笔项目流水吗？")) return;
     try {
-      await approveTransaction(txId, currentUser);
+      const result = await approveTransaction(txId, currentUser);
       await loadProjectDetails();
-      alert("审核通过！");
+      const count = result?.approvedIds?.length || 1;
+      alert(count > 1 ? `审核通过！同组 ${count} 笔资金池转款流水已同步生效。` : "审核通过！");
     } catch (err) {
       alert("审批失败：" + err.message);
     }
@@ -241,9 +242,10 @@ export function ProjectDetail() {
   const handleRejectTx = async (txId) => {
     if (!window.confirm("确定要驳回这笔项目流水吗？")) return;
     try {
-      await rejectTransaction(txId, currentUser);
+      const result = await rejectTransaction(txId, currentUser);
       await loadProjectDetails();
-      alert("已驳回。");
+      const count = result?.rejectedIds?.length || 1;
+      alert(count > 1 ? `已驳回！同组 ${count} 笔资金池转款流水已同步驳回。` : "已驳回。");
     } catch (err) {
       alert("驳回失败：" + err.message);
     }

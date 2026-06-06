@@ -223,7 +223,7 @@ export function useTransactions() {
              GROUP BY pool_id
            ) totals ON totals.pool_id = pm.pool_id
            SET pm.share_pct = CASE
-             WHEN totals.total_called > 0 THEN pm.called_amount / totals.total_called * 100
+             WHEN totals.total_called > 0 THEN LEAST(99.9999, GREATEST(0.0000, ROUND(pm.called_amount / totals.total_called * 100, 4)))
              ELSE 0
            END
            WHERE pm.pool_id = ? AND pm.status = 'active'`,
@@ -233,6 +233,65 @@ export function useTransactions() {
     }
   };
 
+  const normalizeDbTx = (tx) => ({
+    id: tx.id,
+    poolId: tx.pool_id,
+    projectId: tx.project_id,
+    investorId: tx.investor_id,
+    relatedPoolId: tx.related_pool_id,
+    type: tx.type,
+    direction: tx.direction,
+    amount: tx.amount,
+    date: tx.date
+  });
+
+  const getPairedPoolTransferTransactions = async (tx, statuses = ["pending", "approved"]) => {
+    const amount = Number(tx.amount || 0);
+    if (!amount || !tx.date) return [];
+
+    const dateText = String(tx.date).slice(0, 10);
+    const statusPlaceholders = statuses.map(() => "?").join(", ");
+    let sql = "";
+    let params = [];
+
+    if (tx.type === "pool_investment" && tx.pool_id && tx.related_pool_id) {
+      sql = `
+        SELECT * FROM transactions
+        WHERE id <> ?
+          AND type = 'capital_call'
+          AND pool_id = ?
+          AND investor_id = ?
+          AND amount = ?
+          AND DATE(date) = ?
+          AND status IN (${statusPlaceholders})
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      params = [tx.id, tx.related_pool_id, tx.pool_id, amount, dateText, ...statuses];
+    } else if (tx.type === "capital_call" && tx.pool_id && tx.investor_id) {
+      const sourcePool = await querySQL("SELECT id FROM pools WHERE id = ?", [tx.investor_id], { silent: true });
+      if (!sourcePool || sourcePool.length === 0) return [];
+
+      sql = `
+        SELECT * FROM transactions
+        WHERE id <> ?
+          AND type = 'pool_investment'
+          AND pool_id = ?
+          AND related_pool_id = ?
+          AND amount = ?
+          AND DATE(date) = ?
+          AND status IN (${statusPlaceholders})
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      params = [tx.id, tx.investor_id, tx.pool_id, amount, dateText, ...statuses];
+    } else {
+      return [];
+    }
+
+    return await querySQL(sql, params);
+  };
+
   const approveTransaction = async (txId, actor) => {
     setLoading(true);
     setError(null);
@@ -240,12 +299,18 @@ export function useTransactions() {
       const results = await querySQL("SELECT * FROM transactions WHERE id = ?", [txId]);
       if (results.length === 0) throw new Error("未找到该流水记录");
       const tx = results[0];
-      await querySQL("UPDATE transactions SET status = 'approved' WHERE id = ?", [txId]);
-      await runTransactionLinkedUpdates({
-        id: tx.id, poolId: tx.pool_id, projectId: tx.project_id, 
-        investorId: tx.investor_id, relatedPoolId: tx.related_pool_id, 
-        type: tx.type, direction: tx.direction, amount: tx.amount, date: tx.date
-      });
+      const pairedTxs = await getPairedPoolTransferTransactions(tx);
+      const txsToApprove = [tx, ...pairedTxs].filter((item, index, arr) => (
+        item && arr.findIndex(candidate => candidate.id === item.id) === index
+      ));
+
+      for (const item of txsToApprove) {
+        await querySQL("UPDATE transactions SET status = 'approved' WHERE id = ?", [item.id]);
+      }
+      for (const item of txsToApprove) {
+        await runTransactionLinkedUpdates(normalizeDbTx(item));
+      }
+
       await writeAuditLog({
         actor,
         action: "approve",
@@ -254,11 +319,11 @@ export function useTransactions() {
         targetId: txId,
         targetLabel: tx.reference_no || tx.description || txId,
         status: "success",
-        message: "审核通过资金流水",
-        beforeData: tx,
-        afterData: { ...tx, status: "approved" }
+        message: pairedTxs.length > 0 ? "审核通过资金池转款双分录" : "审核通过资金流水",
+        beforeData: txsToApprove,
+        afterData: txsToApprove.map(item => ({ ...item, status: "approved" }))
       });
-      return true;
+      return { approvedIds: txsToApprove.map(item => item.id) };
     } catch (err) {
       await writeAuditLog({
         actor,
@@ -283,7 +348,13 @@ export function useTransactions() {
     try {
       const results = await querySQL("SELECT * FROM transactions WHERE id = ?", [txId]);
       const tx = results[0] || {};
-      await querySQL("UPDATE transactions SET status = 'rejected' WHERE id = ?", [txId]);
+      const pairedTxs = tx.id ? await getPairedPoolTransferTransactions(tx) : [];
+      const txsToReject = [tx, ...pairedTxs].filter((item, index, arr) => (
+        item && item.id && arr.findIndex(candidate => candidate.id === item.id) === index
+      ));
+      for (const item of txsToReject) {
+        await querySQL("UPDATE transactions SET status = 'rejected' WHERE id = ?", [item.id]);
+      }
       await writeAuditLog({
         actor,
         action: "reject",
@@ -292,11 +363,11 @@ export function useTransactions() {
         targetId: txId,
         targetLabel: tx.reference_no || tx.description || txId,
         status: "success",
-        message: "驳回资金流水",
-        beforeData: tx,
-        afterData: { ...tx, status: "rejected" }
+        message: pairedTxs.length > 0 ? "驳回资金池转款双分录" : "驳回资金流水",
+        beforeData: txsToReject,
+        afterData: txsToReject.map(item => ({ ...item, status: "rejected" }))
       });
-      return true;
+      return { rejectedIds: txsToReject.map(item => item.id) };
     } catch (err) {
       await writeAuditLog({
         actor,
@@ -322,9 +393,18 @@ export function useTransactions() {
       const txs = await querySQL("SELECT * FROM transactions WHERE id = ?", [txId]);
       if (!txs || txs.length === 0) throw new Error("未找到该流水记录");
       const tx = txs[0];
-      await querySQL("DELETE FROM transactions WHERE id = ?", [txId]);
-      if (tx.status === 'approved') {
-        await runTransactionLinkedUpdates({ ...tx, poolId: tx.pool_id, projectId: tx.project_id, investorId: tx.investor_id, relatedPoolId: tx.related_pool_id });
+      const pairedTxs = await getPairedPoolTransferTransactions(tx, ["pending", "approved", "rejected"]);
+      const txsToDelete = [tx, ...pairedTxs].filter((item, index, arr) => (
+        item && item.id && arr.findIndex(candidate => candidate.id === item.id) === index
+      ));
+
+      for (const item of txsToDelete) {
+        await querySQL("DELETE FROM transactions WHERE id = ?", [item.id]);
+      }
+      for (const item of txsToDelete) {
+        if (item.status === 'approved') {
+          await runTransactionLinkedUpdates(normalizeDbTx(item));
+        }
       }
       await writeAuditLog({
         actor,
@@ -334,10 +414,10 @@ export function useTransactions() {
         targetId: txId,
         targetLabel: tx.reference_no || tx.description || txId,
         status: "success",
-        message: "删除资金流水",
-        beforeData: tx
+        message: pairedTxs.length > 0 ? "删除资金池转款双分录" : "删除资金流水",
+        beforeData: txsToDelete
       });
-      return true;
+      return { deletedIds: txsToDelete.map(item => item.id) };
     } catch (err) {
       await writeAuditLog({
         actor,

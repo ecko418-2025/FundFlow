@@ -102,7 +102,7 @@ export function usePools() {
       pool.name,
       pool.description || "",
       pool.totalCommitted || 0,
-      pool.totalCommitted || 0, // 初始可用余额等于总认缴
+      0, // 初始可用余额为 0，后续只由已审核实缴/投放/回款流水重算
       pool.type || "capital",
       pool.startDate || null,
       pool.endDate || null,
@@ -128,7 +128,7 @@ export function usePools() {
       targetLabel: pool.name,
       status: "success",
       message: "创建资金池",
-      afterData: { id, ...pool },
+      afterData: { id, ...pool, availableBalance: 0 },
       requestPayload: pool
     });
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { querySQL } from "../../lib/db";
 import { StatCard } from "../../components/ui/StatCard";
 import { DataTable } from "../../components/ui/DataTable";
@@ -76,6 +76,7 @@ export function LPDashboard({ user }) {
   const [activeTab, setActiveTab] = useState("income");
   const [pageByTab, setPageByTab] = useState({ income: 1, projects: 1, pools: 1 });
   const [pageSizeByTab, setPageSizeByTab] = useState({ income: 20, projects: 20, pools: 20 });
+  const tableSectionRef = useRef(null);
 
   useEffect(() => {
     async function loadLPDashboard() {
@@ -324,6 +325,14 @@ export function LPDashboard({ user }) {
     setPageByTab(prev => ({ ...prev, [activeTable.key]: 1 }));
   };
 
+  const jumpToTable = (tabKey) => {
+    setActiveTab(tabKey);
+    setPageByTab(prev => ({ ...prev, [tabKey]: 1 }));
+    window.requestAnimationFrame(() => {
+      tableSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.welcome}>
@@ -333,12 +342,12 @@ export function LPDashboard({ user }) {
 
       <div style={styles.cardGrid}>
         <StatCard title="我的累计实缴出资" value={formatCNY(totalDirectCalled, false)} unit="元" subtext="直接打款至资金池的已审核金额" icon={Wallet} />
-        <StatCard title="账面现金权益净值" value={formatCNY(totalBookValue, false)} unit="元" subtext="资金池现金余额 × 我的有效份额" icon={Layers} color="var(--accent-gold)" />
-        <StatCard title="累计个人分配收益" value={formatCNY(totalDistributions, false)} unit="元" subtext="已确认分配至本人账户的收益" icon={DollarSign} color="var(--accent-green)" />
-        <StatCard title="项目折算投资敞口" value={formatCNY(totalProjectExposure, false)} unit="元" subtext="直接项目和穿透项目的合计敞口" icon={Briefcase} color="var(--accent-blue)" />
+        <StatCard title="账面现金权益净值" value={formatCNY(totalBookValue, false)} unit="元" subtext="资金池现金余额 × 我的有效份额" icon={Layers} color="var(--accent-gold)" onClick={() => jumpToTable("pools")} />
+        <StatCard title="累计个人分配收益" value={formatCNY(totalDistributions, false)} unit="元" subtext="已确认分配至本人账户的收益" icon={DollarSign} color="var(--accent-green)" onClick={() => jumpToTable("income")} />
+        <StatCard title="项目折算投资敞口" value={formatCNY(totalProjectExposure, false)} unit="元" subtext="直接项目和穿透项目的合计敞口" icon={Briefcase} color="var(--accent-blue)" onClick={() => jumpToTable("projects")} />
       </div>
 
-      <div className="glass-card no-hover" style={styles.section}>
+      <div ref={tableSectionRef} className="glass-card no-hover" style={styles.section}>
         <div style={styles.tableHeader}>
           <div>
             <h3 style={styles.sectionTitle}>{activeTable.title}</h3>

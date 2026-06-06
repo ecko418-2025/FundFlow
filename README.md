@@ -1,16 +1,139 @@
-# React + Vite
+# 贷管家资金管理平台
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+贷管家是一套面向人民币项目制、多层级资金池场景的记账与资金管理系统。系统围绕“资金池、项目、核心流水、收益分配、LP 对账、操作安全日志”建立完整业务闭环，并支持经办员制单、管理员审核的 Maker-Checker 审批流程。
 
-Currently, two official plugins are available:
+## 核心功能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 资金池管理：维护基金/资金池基础信息、认缴规模、实缴成员、母子资金池关系和现金可用余额。
+- 项目管理：登记项目基础信息、项目出资方、投资打款、回款和项目状态。
+- 核心流水账本：统一记录实缴、项目投资、项目回款、收益分红、管理费、资金池间转款等业务流水。
+- 审批流：Operator 录入的数据默认为待审核，Admin 审核通过后才会影响余额、份额和报表。
+- 收益分配：支持按资金池或项目生成分配方案，按持有份额计算个人或机构收益，并导出 Excel/PDF。
+- LP 端资产总览：LP 可查看个人收益分配汇总、参与项目汇总、参与资金池汇总和对账账单。
+- 操作安全日志：记录关键操作的操作者、模块、动作、对象、时间和结果，管理员可查看且不可在页面删除。
 
-## React Compiler
+## 角色权限
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 角色 | 说明 | 主要权限 |
+| --- | --- | --- |
+| Admin 管理员 | 审核人/系统管理员 | 可查看和操作全部管理模块，可审核、驳回、删除流水，可查看操作安全日志 |
+| Operator 经办员 | 制单人 | 可录入资金池、项目、流水、收益分配等业务数据，录入后进入待审核状态 |
+| LP 出资人 | 投资人/出资方 | 仅可查看与本人相关且已生效的数据，包括资产总览和对账账单 |
 
-## Expanding the ESLint configuration
+## 关键业务规则
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Admin 录入的流水默认直接生效。
+- Operator 录入的流水默认进入 `pending` 待审核状态。
+- 待审核流水不会影响资金池余额、项目累计额、出资人实缴额、持有份额和 LP 报表。
+- 只有 `approved` 已生效流水会参与所有统计计算。
+- 资金池新建时，可用现金余额默认为 0，后续只由已审核资金流水重算。
+- 资金池与资金池之间转款会生成一组双分录流水：母池出账、子池入账。
+- 对双分录中的任意一笔执行通过、驳回或删除时，同组另一笔会同步处理，避免账务单边生效。
+- 操作安全日志按北京时间记录，页面只允许查看，不提供删除入口。
+
+## 技术栈
+
+- 前端框架：React 19
+- 构建工具：Vite
+- 路由：React Router
+- 云服务：腾讯 CloudBase
+- 数据访问：CloudBase 云函数 `executeSQL`
+- 数据库：MySQL / CloudBase SQL
+- 图标：lucide-react
+- 表格导入导出：xlsx
+
+## 本地运行
+
+安装依赖：
+
+```bash
+npm install
+```
+
+启动本地开发服务：
+
+```bash
+npm run dev
+```
+
+常用本地访问地址：
+
+```text
+http://127.0.0.1:5173/fund/
+```
+
+如果端口被占用，Vite 会自动切换到新的端口，请以终端显示的地址为准。
+
+## 构建与部署
+
+构建生产包：
+
+```bash
+npm run build
+```
+
+CloudBase 静态网站部署路径：
+
+```text
+fund/
+```
+
+当前 CloudBase 环境：
+
+```text
+cloud1-d2gpq0fat0dd3c17f
+```
+
+线上访问地址：
+
+```text
+https://cloud1-d2gpq0fat0dd3c17f-1428383052.tcloudbaseapp.com/fund/
+```
+
+## 测试账号
+
+登录页保留了快捷账号按钮，点击后会自动填入邮箱和测试密码。
+
+| 角色 | 邮箱 | 密码 |
+| --- | --- | --- |
+| Admin | admin@example.com | Test1234 |
+| Operator | operator@example.com | Test1234 |
+| LP 张三 | zhangsan@example.com | Test1234 |
+| LP 李四 | lisi@example.com | Test1234 |
+| LP 未来资本 | future@example.com | Test1234 |
+
+## 目录说明
+
+```text
+src/
+  components/       通用 UI 组件和布局
+  context/          登录态和角色上下文
+  hooks/            资金池、流水、收益分配等业务逻辑
+  lib/              CloudBase、SQL、审计日志、格式化和 Excel 工具
+  pages/admin/      管理员和经办员页面
+  pages/lp/         LP 资产总览和对账账单页面
+
+cloudbase_setup/
+  functions/        CloudBase 云函数
+  init_schema.sql   初始化数据库结构和示例数据
+  *.sql             迁移和修复脚本
+```
+
+## 数据库与云函数注意事项
+
+- `executeSQL` 是当前前端访问数据库的统一云函数入口。
+- `cloudbaserc.json` 中的数据库连接变量应在 CloudBase 控制台配置，仓库内不要提交真实数据库密码。
+- 涉及表结构升级时，优先在 CloudBase SQL 控制台或受控迁移脚本中执行。
+- `cloudbase_setup/upgrade_share_pct_precision.sql` 用于把资金池成员份额字段升级到可精确保存 `100.0000%`。
+
+## 当前重点模块
+
+- Admin 控制台：总览数据、资金池管理、项目管理、核心流水账本、收益分配、操作安全日志。
+- Operator 控制台：保留与管理员一致的核心业务标签，但录入数据必须等待管理员审核。
+- LP 控制台：资产总览、个人收益分配汇总、参与项目汇总、参与资金池汇总、对账账单和打印导出。
+
+## 开发提醒
+
+- 修改涉及金额、份额、余额的逻辑后，需要同时检查 Admin、Operator、LP 三端展示。
+- 修改流水审批、删除、收益分配等高风险逻辑后，应重新执行全局财务数据校准或抽样核对数据库结果。
+- 双分录业务必须保持成组处理，不能只让其中一笔单独生效、驳回或删除。

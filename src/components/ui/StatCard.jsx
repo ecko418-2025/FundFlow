@@ -9,6 +9,14 @@ export function StatCard({ title, value, unit = "", subtext = "", trend = null, 
         ...(clickable ? styles.cardClickable : {})
       }}
       onClick={clickable ? onClick : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
     >
       {/* 顶部标题与图标 */}
       <div style={styles.header}>

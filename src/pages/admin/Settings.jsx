@@ -70,7 +70,7 @@ export function Settings() {
           GROUP BY pool_id
         ) totals ON totals.pool_id = pm.pool_id
         SET pm.share_pct = CASE
-          WHEN totals.total_called > 0 THEN pm.called_amount / totals.total_called * 100
+          WHEN totals.total_called > 0 THEN LEAST(99.9999, GREATEST(0.0000, ROUND(pm.called_amount / totals.total_called * 100, 4)))
           ELSE 0
         END
         WHERE pm.status = 'active'

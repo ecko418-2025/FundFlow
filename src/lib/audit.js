@@ -4,6 +4,21 @@ const MAX_TEXT = 500;
 const AUDIT_RETRY_COOLDOWN_MS = 30000;
 let auditMutedUntil = 0;
 
+function getBeijingDateTime() {
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(new Date());
+  const get = (type) => parts.find(part => part.type === type)?.value;
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
 function stringifySafe(value) {
   if (value === undefined || value === null) return null;
   try {
@@ -55,8 +70,8 @@ export async function writeAuditLog({
         id, actor_uid, actor_email, actor_role, actor_name,
         action, module, target_type, target_id, target_label,
         status, message, before_data, after_data, request_payload,
-        error_message, user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        error_message, user_agent, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         auditId,
         normalizedActor.uid,
@@ -74,7 +89,8 @@ export async function writeAuditLog({
         stringifySafe(afterData),
         stringifySafe(requestPayload),
         truncate(errorMessage, 2000),
-        truncate(userAgent)
+        truncate(userAgent),
+        getBeijingDateTime()
       ],
       { silent: true }
     );

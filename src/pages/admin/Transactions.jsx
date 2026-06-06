@@ -504,8 +504,9 @@ export function Transactions() {
   const handleApprove = async (id) => {
     if (!window.confirm("确定核准通过这笔流水吗？")) return;
     try {
-      await approveTransaction(id, currentUser);
-      alert("审核通过！");
+      const result = await approveTransaction(id, currentUser);
+      const count = result?.approvedIds?.length || 1;
+      alert(count > 1 ? `审核通过！同组 ${count} 笔资金池转款流水已同步生效。` : "审核通过！");
       await fetchTxs();
     } catch (err) { alert("审批失败: " + err.message); }
   };
@@ -513,8 +514,9 @@ export function Transactions() {
   const handleReject = async (id) => {
     if (!window.confirm("确定要驳回这笔流水吗？")) return;
     try {
-      await rejectTransaction(id, currentUser);
-      alert("已驳回。");
+      const result = await rejectTransaction(id, currentUser);
+      const count = result?.rejectedIds?.length || 1;
+      alert(count > 1 ? `已驳回！同组 ${count} 笔资金池转款流水已同步驳回。` : "已驳回。");
       await fetchTxs();
     } catch (err) { alert("驳回失败: " + err.message); }
   };
@@ -522,8 +524,9 @@ export function Transactions() {
   const handleDelete = async (id) => {
     if (!window.confirm("确定要彻底删除并撤销这笔流水产生的资金影响吗？")) return;
     try {
-      await deleteTransaction(id, currentUser);
-      alert("删除成功，相关余额已自动回滚。");
+      const result = await deleteTransaction(id, currentUser);
+      const count = result?.deletedIds?.length || 1;
+      alert(count > 1 ? `删除成功！同组 ${count} 笔资金池转款流水已同步删除，相关余额已自动回滚。` : "删除成功，相关余额已自动回滚。");
       await fetchTxs();
     } catch (err) { alert("删除失败：" + err.message); }
   };

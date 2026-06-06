@@ -30,10 +30,30 @@ const ACTION_LABELS = {
 
 function formatDateTime(value) {
   if (!value) return "-";
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2}):(\d{2})/);
+    if (match) {
+      return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
+    }
+  }
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(d);
+  const get = (type) => parts.find(part => part.type === type)?.value;
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
+function getBeijingToday() {
+  return formatDateTime(new Date()).slice(0, 10);
 }
 
 function parseJson(value) {
@@ -113,7 +133,7 @@ export function AuditLogs() {
   }, [logs, keyword, moduleFilter, actionFilter, statusFilter, actorFilter, dateFrom, dateTo]);
 
   const stats = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getBeijingToday();
     return {
       total: logs.length,
       today: logs.filter(log => formatDateTime(log.created_at).slice(0, 10) === today).length,
@@ -127,7 +147,7 @@ export function AuditLogs() {
       <div style={styles.pageHeader}>
         <div>
           <h2>操作安全日志</h2>
-          <p style={styles.subtitle}>只读审计台账，记录关键操作的操作者、时间、对象与结果。</p>
+          <p style={styles.subtitle}>只读审计台账，记录关键操作的操作者、北京时间、对象与结果。</p>
         </div>
         <button onClick={loadLogs} className="btn-secondary" disabled={loading}>
           <Clock size={16} />
@@ -186,7 +206,7 @@ export function AuditLogs() {
         <table className="data-table" style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>时间</th>
+              <th style={styles.th}>北京时间</th>
               <th style={styles.th}>操作人</th>
               <th style={styles.th}>角色</th>
               <th style={styles.th}>模块</th>
@@ -231,7 +251,7 @@ export function AuditLogs() {
           <div style={styles.detail}>
             <div style={styles.detailGrid}>
               <div><span>日志编号</span><strong className="mono">{selectedLog.id}</strong></div>
-              <div><span>发生时间</span><strong>{formatDateTime(selectedLog.created_at)}</strong></div>
+              <div><span>发生时间（北京时间）</span><strong>{formatDateTime(selectedLog.created_at)}</strong></div>
               <div><span>操作人</span><strong>{selectedLog.actor_name || selectedLog.actor_email || "-"}</strong></div>
               <div><span>角色</span><strong>{selectedLog.actor_role || "-"}</strong></div>
               <div><span>模块</span><strong>{MODULE_LABELS[selectedLog.module] || selectedLog.module}</strong></div>

@@ -50,7 +50,7 @@ CREATE TABLE `pool_members` (
   `investor_id` VARCHAR(36) NOT NULL COMMENT '出资方ID (LP或母池ID)',
   `committed_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '认缴出资金额',
   `called_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '累计实缴金额',
-  `share_pct` DECIMAL(6,4) NOT NULL DEFAULT 0.0000 COMMENT '持股比例（%）',
+  `share_pct` DECIMAL(7,4) NOT NULL DEFAULT 0.0000 COMMENT '持股比例（%）',
   `status` VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '状态: active/withdrawn',
   `joined_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
   PRIMARY KEY (`id`),
