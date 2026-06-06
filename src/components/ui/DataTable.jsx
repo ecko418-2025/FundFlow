@@ -2,7 +2,7 @@ import React from "react";
 
 export function DataTable({ headers = [], data = [], emptyMessage = "暂无相关数据", onRowClick = null, summaryData = null }) {
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="table-container">
       <table className="data-table" style={styles.table}>
         <thead>
           <tr>

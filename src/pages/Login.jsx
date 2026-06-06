@@ -37,12 +37,12 @@ export function Login() {
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="login-page">
       {/* 炫光背景球 */}
       <div style={styles.blurBall1} />
       <div style={styles.blurBall2} />
 
-      <div style={styles.card} className="glass-card">
+      <div style={styles.card} className="glass-card login-card">
         {/* 系统标志 */}
         <div style={styles.logoHeader}>
           <div style={styles.logoGlow}>
@@ -103,37 +103,47 @@ export function Login() {
             <span style={styles.dividerText}>快捷账号登录</span>
           </div>
           
-          <div style={styles.quickBtnGrid}>
+          <div style={styles.quickBtnGrid} className="login-quick-grid">
             <button 
+              type="button"
               onClick={() => handleQuickLogin("admin@example.com")} 
+              className="login-quick-btn"
               style={{ ...styles.quickBtn, borderLeft: "4px solid var(--accent-blue)" }}
             >
               <span style={styles.quickBtnTitle}>管理员 (Admin)</span>
               <span style={styles.quickBtnEmail}>admin@example.com</span>
             </button>
             <button 
+              type="button"
               onClick={() => handleQuickLogin("operator@example.com")} 
+              className="login-quick-btn"
               style={{ ...styles.quickBtn, borderLeft: "4px solid var(--accent-red)" }}
             >
               <span style={styles.quickBtnTitle}>经办员 (Operator)</span>
               <span style={styles.quickBtnEmail}>operator@example.com</span>
             </button>
             <button 
+              type="button"
               onClick={() => handleQuickLogin("zhangsan@example.com")} 
+              className="login-quick-btn"
               style={{ ...styles.quickBtn, borderLeft: "4px solid var(--accent-gold)" }}
             >
               <span style={styles.quickBtnTitle}>LP - 张三</span>
               <span style={styles.quickBtnEmail}>zhangsan@example.com</span>
             </button>
             <button 
+              type="button"
               onClick={() => handleQuickLogin("lisi@example.com")} 
+              className="login-quick-btn"
               style={{ ...styles.quickBtn, borderLeft: "4px solid var(--accent-green)" }}
             >
               <span style={styles.quickBtnTitle}>LP - 李四</span>
               <span style={styles.quickBtnEmail}>lisi@example.com</span>
             </button>
             <button 
+              type="button"
               onClick={() => handleQuickLogin("future@example.com")} 
+              className="login-quick-btn login-quick-btn-wide"
               style={{ ...styles.quickBtn, borderLeft: "4px solid var(--text-muted)", gridColumn: "span 2" }}
             >
               <span style={styles.quickBtnTitle}>LP - 未来资本基金</span>

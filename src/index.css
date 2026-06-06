@@ -322,8 +322,257 @@ body {
   animation: spin 1s linear infinite;
 }
 
+.sidebar-toggle-button,
+.mobile-sidebar-backdrop {
+  display: none;
+}
+
+.sidebar-toggle-button {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.sidebar-toggle-button:hover {
+  background: var(--border);
+  border-color: var(--text-muted);
+}
+
+.sidebar-toggle-button:active {
+  transform: translateY(1px);
+}
+
 .lp-statement-print {
   display: none;
+}
+
+@media (max-width: 768px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .login-page {
+    min-height: 100vh !important;
+    height: auto !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    overflow-y: auto !important;
+    padding: 18px 14px calc(24px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .login-card {
+    max-width: 440px !important;
+    padding: 24px 18px !important;
+    margin: 0 auto !important;
+  }
+
+  .login-card .form-group {
+    margin-bottom: 16px;
+  }
+
+  .login-card .form-input {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .login-quick-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .login-quick-btn {
+    min-height: 54px;
+    padding: 11px 12px !important;
+  }
+
+  .login-quick-btn-wide {
+    grid-column: auto !important;
+  }
+
+  .app-main-area {
+    margin-left: 0 !important;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-topbar {
+    left: 0 !important;
+    height: 62px !important;
+    padding: 0 14px !important;
+    z-index: 120 !important;
+  }
+
+  .app-topbar h1 {
+    font-size: 1rem !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-content {
+    margin-top: 62px !important;
+    padding: 18px 14px 28px !important;
+    min-height: calc(100vh - 62px) !important;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-content > * {
+    max-width: 100%;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    min-height: 42px;
+    padding: 10px 14px;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .form-input,
+  .search-input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .stat-value {
+    font-size: 1.45rem;
+  }
+
+  .table-container {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 720px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 12px 10px;
+    font-size: 0.82rem;
+  }
+
+  .modal-overlay {
+    align-items: stretch !important;
+    justify-content: center !important;
+    padding: 10px !important;
+  }
+
+  .app-modal {
+    max-width: none !important;
+    max-height: calc(100vh - 20px) !important;
+    padding: 18px !important;
+    border-radius: 10px !important;
+  }
+
+  .app-modal h3 {
+    font-size: 1rem !important;
+  }
+
+  .app-modal form [style*="display: flex"] {
+    flex-wrap: wrap;
+  }
+
+  .sidebar-toggle-button {
+    display: inline-flex;
+  }
+
+  .app-sidebar {
+    width: min(82vw, 300px) !important;
+    max-width: 300px;
+    z-index: 140 !important;
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    box-shadow: 18px 0 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 130;
+    border: none;
+    background: rgba(0, 0, 0, 0.52);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    cursor: pointer;
+  }
+
+  .mobile-sidebar-backdrop.is-open {
+    display: block;
+  }
+
+  .glass-card {
+    padding: 18px;
+    border-radius: 10px;
+  }
+}
+
+@media (max-width: 430px) {
+  .login-card {
+    padding: 22px 16px !important;
+  }
+
+  .login-card h2 {
+    font-size: 1.35rem !important;
+  }
+
+  .login-card [style*="width: 68px"] {
+    width: 56px !important;
+    height: 56px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .login-card [style*="margin-bottom: 32px"] {
+    margin-bottom: 22px !important;
+  }
+
+  .data-table {
+    min-width: 680px;
+  }
+}
+
+@media (min-width: 769px) {
+  .sidebar-toggle-button {
+    display: inline-flex;
+  }
+
+  .app-sidebar {
+    transform: none !important;
+    transition: transform 0.22s ease;
+  }
+
+  .app-main-area,
+  .app-topbar {
+    transition: margin-left 0.22s ease, left 0.22s ease;
+  }
+
+  .app-shell.sidebar-collapsed .app-sidebar {
+    transform: translateX(-105%) !important;
+  }
+
+  .app-shell.sidebar-collapsed .app-main-area {
+    margin-left: 0 !important;
+  }
+
+  .app-shell.sidebar-collapsed .app-topbar {
+    left: 0 !important;
+  }
 }
 
 @media print {

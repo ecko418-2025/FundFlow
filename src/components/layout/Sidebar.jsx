@@ -14,7 +14,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 
-export function Sidebar({ user, onLogout }) {
+export function Sidebar({ user, onLogout, isMobileOpen = false, onNavigate = null }) {
   const location = useLocation();
   const role = user?.role || "lp";
 
@@ -51,7 +51,7 @@ export function Sidebar({ user, onLogout }) {
   const currentMenu = role === "admin" ? adminMenu : role === "operator" ? operatorMenu : lpMenu;
 
   return (
-    <aside style={styles.sidebar}>
+    <aside style={styles.sidebar} className={`app-sidebar ${isMobileOpen ? "mobile-open" : ""}`}>
       {/* 系统 Logo */}
       <div style={styles.logoContainer}>
         <TrendingUp size={28} color="var(--accent-gold)" />
@@ -68,6 +68,7 @@ export function Sidebar({ user, onLogout }) {
             <Link 
               key={item.path} 
               to={item.path} 
+              onClick={onNavigate || undefined}
               style={{
                 ...styles.navLink,
                 ...(isActive ? styles.navLinkActive : {})

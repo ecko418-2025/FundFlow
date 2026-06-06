@@ -1,9 +1,19 @@
 import React from "react";
+import { Menu } from "lucide-react";
 
-export function TopBar() {
+export function TopBar({ onToggleMenu, isSidebarCollapsed = false }) {
   return (
-    <header style={styles.topbar}>
-      <div>
+    <header style={styles.topbar} className="app-topbar">
+      <div style={styles.leftGroup}>
+        <button
+          type="button"
+          className="sidebar-toggle-button"
+          aria-label={isSidebarCollapsed ? "展开侧边栏" : "收起或打开侧边栏"}
+          title={isSidebarCollapsed ? "展开侧边栏" : "收起或打开侧边栏"}
+          onClick={onToggleMenu}
+        >
+          <Menu size={22} />
+        </button>
         <h1 style={styles.title}>贷管家 资金管理台</h1>
       </div>
     </header>
@@ -25,6 +35,12 @@ const styles = {
     right: 0,
     top: 0,
     zIndex: 99
+  },
+  leftGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    minWidth: 0
   },
   title: {
     fontSize: "1.15rem",

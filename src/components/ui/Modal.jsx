@@ -5,8 +5,8 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "580px" }) 
   if (!isOpen) return null;
 
   return (
-    <div style={styles.overlay}>
-      <div style={{ ...styles.modal, maxWidth }} className="glass-card">
+    <div style={styles.overlay} className="modal-overlay">
+      <div style={{ ...styles.modal, maxWidth }} className="glass-card app-modal">
         {/* 头部 */}
         <div style={styles.header}>
           <h3 style={styles.title}>{title}</h3>
