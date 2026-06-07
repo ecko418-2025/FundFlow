@@ -1,14 +1,14 @@
 import React from "react";
 import { X } from "lucide-react";
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = "580px" }) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = "580px", className = "" }) {
   if (!isOpen) return null;
 
   return (
     <div style={styles.overlay} className="modal-overlay">
-      <div style={{ ...styles.modal, maxWidth }} className="glass-card app-modal">
+      <div style={{ ...styles.modal, maxWidth }} className={`glass-card app-modal ${className}`}>
         {/* 头部 */}
-        <div style={styles.header}>
+        <div style={styles.header} className="app-modal-header">
           <h3 style={styles.title}>{title}</h3>
           <button onClick={onClose} style={styles.closeBtn}>
             <X size={20} />
@@ -16,7 +16,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "580px" }) 
         </div>
 
         {/* 内容区域 */}
-        <div style={styles.body}>
+        <div style={styles.body} className="app-modal-body">
           {children}
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Search, Clock, AlertTriangle, UserCheck, Database } from "lucide-react";
 import { querySQL } from "../../lib/db";
 import { Badge } from "../../components/ui/Badge";
@@ -28,6 +28,8 @@ const ACTION_LABELS = {
   reconcile: "校准"
 };
 
+const PAGE_SIZES = [50, 100, 200];
+
 function formatDateTime(value) {
   if (!value) return "-";
   if (typeof value === "string") {
@@ -52,8 +54,9 @@ function formatDateTime(value) {
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
-function getBeijingToday() {
-  return formatDateTime(new Date()).slice(0, 10);
+function getBeijingDateRangeToday() {
+  const date = formatDateTime(new Date()).slice(0, 10);
+  return [`${date} 00:00:00`, `${date} 23:59:59`];
 }
 
 function parseJson(value) {
@@ -76,9 +79,65 @@ function JsonBlock({ title, value }) {
   );
 }
 
+function buildWhereClause({ keyword, moduleFilter, actionFilter, statusFilter, actorFilter, dateFrom, dateTo }) {
+  const clauses = [];
+  const params = [];
+  const kw = keyword.trim();
+
+  if (moduleFilter) {
+    clauses.push("module = ?");
+    params.push(moduleFilter);
+  }
+  if (actionFilter) {
+    clauses.push("action = ?");
+    params.push(actionFilter);
+  }
+  if (statusFilter) {
+    clauses.push("status = ?");
+    params.push(statusFilter);
+  }
+  if (actorFilter) {
+    clauses.push("actor_role = ?");
+    params.push(actorFilter);
+  }
+  if (dateFrom) {
+    clauses.push("created_at >= ?");
+    params.push(`${dateFrom} 00:00:00`);
+  }
+  if (dateTo) {
+    clauses.push("created_at <= ?");
+    params.push(`${dateTo} 23:59:59`);
+  }
+  if (kw) {
+    const like = `%${kw}%`;
+    clauses.push(`(
+      actor_email LIKE ?
+      OR actor_name LIKE ?
+      OR actor_role LIKE ?
+      OR action LIKE ?
+      OR module LIKE ?
+      OR target_label LIKE ?
+      OR target_id LIKE ?
+      OR message LIKE ?
+      OR error_message LIKE ?
+    )`);
+    params.push(like, like, like, like, like, like, like, like, like);
+  }
+
+  return {
+    whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    params
+  };
+}
+
+function getCount(row) {
+  return Number(row?.count || row?.["COUNT(*)"] || 0);
+}
+
 export function AuditLogs() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
@@ -87,69 +146,117 @@ export function AuditLogs() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selectedLog, setSelectedLog] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalRows, setTotalRows] = useState(0);
+  const [stats, setStats] = useState({ total: 0, today: 0, failures: 0, actors: 0 });
 
-  const loadLogs = async () => {
+  const filterState = useMemo(() => ({
+    keyword,
+    moduleFilter,
+    actionFilter,
+    statusFilter,
+    actorFilter,
+    dateFrom,
+    dateTo
+  }), [keyword, moduleFilter, actionFilter, statusFilter, actorFilter, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const displayPage = Math.min(page, totalPages);
+
+  const loadStats = useCallback(async () => {
+    const [todayStart, todayEnd] = getBeijingDateRangeToday();
+    const data = await querySQL(
+      `SELECT
+        (SELECT COUNT(*) FROM audit_logs) AS total,
+        (SELECT COUNT(*) FROM audit_logs WHERE created_at >= ? AND created_at <= ?) AS today,
+        (SELECT COUNT(*) FROM audit_logs WHERE status = 'failure') AS failures,
+        (SELECT COUNT(DISTINCT COALESCE(actor_uid, actor_email)) FROM audit_logs WHERE actor_uid IS NOT NULL OR actor_email IS NOT NULL) AS actors`,
+      [todayStart, todayEnd]
+    );
+    const row = data?.[0] || {};
+    setStats({
+      total: Number(row.total || 0),
+      today: Number(row.today || 0),
+      failures: Number(row.failures || 0),
+      actors: Number(row.actors || 0)
+    });
+  }, []);
+
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await querySQL(`
-        SELECT *
-        FROM audit_logs
-        ORDER BY created_at DESC
-      `);
-      setLogs(data || []);
+      const { whereSql, params } = buildWhereClause(filterState);
+      const safePageSize = PAGE_SIZES.includes(Number(pageSize)) ? Number(pageSize) : 50;
+      const offset = Math.max(0, (page - 1) * safePageSize);
+      const [rows, countRows] = await Promise.all([
+        querySQL(
+          `SELECT id, actor_uid, actor_email, actor_role, actor_name,
+                  action, module, target_type, target_id, target_label,
+                  status, message, error_message, created_at
+           FROM audit_logs
+           ${whereSql}
+           ORDER BY created_at DESC
+           LIMIT ${safePageSize} OFFSET ${offset}`,
+          params
+        ),
+        querySQL(`SELECT COUNT(*) AS count FROM audit_logs ${whereSql}`, params)
+      ]);
+      const nextTotal = getCount(countRows?.[0]);
+      setLogs(rows || []);
+      setTotalRows(nextTotal);
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / safePageSize));
+      if (page > nextTotalPages) setPage(nextTotalPages);
     } catch (err) {
       alert("加载操作安全日志失败：" + err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterState, page, pageSize]);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadStats(), loadLogs()]);
+  }, [loadStats, loadLogs]);
 
   useEffect(() => {
-    loadLogs();
-  }, []);
+    loadStats().catch(err => console.warn("加载安全日志统计失败", err.message));
+  }, [loadStats]);
 
-  const filteredLogs = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
-    return logs.filter(log => {
-      if (moduleFilter && log.module !== moduleFilter) return false;
-      if (actionFilter && log.action !== actionFilter) return false;
-      if (statusFilter && log.status !== statusFilter) return false;
-      if (actorFilter && log.actor_role !== actorFilter) return false;
-      if (dateFrom && formatDateTime(log.created_at).slice(0, 10) < dateFrom) return false;
-      if (dateTo && formatDateTime(log.created_at).slice(0, 10) > dateTo) return false;
-      if (!kw) return true;
-      return [
-        log.actor_email,
-        log.actor_name,
-        log.actor_role,
-        log.action,
-        log.module,
-        log.target_label,
-        log.target_id,
-        log.message,
-        log.error_message
-      ].some(value => String(value || "").toLowerCase().includes(kw));
-    });
-  }, [logs, keyword, moduleFilter, actionFilter, statusFilter, actorFilter, dateFrom, dateTo]);
+  useEffect(() => {
+    setPage(1);
+  }, [keyword, moduleFilter, actionFilter, statusFilter, actorFilter, dateFrom, dateTo, pageSize]);
 
-  const stats = useMemo(() => {
-    const today = getBeijingToday();
-    return {
-      total: logs.length,
-      today: logs.filter(log => formatDateTime(log.created_at).slice(0, 10) === today).length,
-      failures: logs.filter(log => log.status === "failure").length,
-      actors: new Set(logs.map(log => log.actor_uid || log.actor_email).filter(Boolean)).size
-    };
-  }, [logs]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadLogs();
+    }, keyword.trim() ? 350 : 0);
+    return () => window.clearTimeout(timer);
+  }, [loadLogs, keyword]);
+
+  const openDetail = async (log) => {
+    setSelectedLog(log);
+    setDetailLoading(true);
+    try {
+      const rows = await querySQL("SELECT * FROM audit_logs WHERE id = ?", [log.id]);
+      setSelectedLog(rows?.[0] || log);
+    } catch (err) {
+      alert("加载日志详情失败：" + err.message);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const startRow = totalRows === 0 ? 0 : (displayPage - 1) * pageSize + 1;
+  const endRow = Math.min(displayPage * pageSize, totalRows);
 
   return (
     <div style={styles.container}>
       <div style={styles.pageHeader}>
         <div>
           <h2>操作安全日志</h2>
-          <p style={styles.subtitle}>只读审计台账，记录关键操作的操作者、北京时间、对象与结果。</p>
+          <p style={styles.subtitle}>只读审计台账，列表按页加载，完整 JSON 详情点击后按需读取。</p>
         </div>
-        <button onClick={loadLogs} className="btn-secondary" disabled={loading}>
+        <button onClick={refreshAll} className="btn-secondary" disabled={loading}>
           <Clock size={16} />
           <span>{loading ? "刷新中..." : "刷新"}</span>
         </button>
@@ -203,47 +310,71 @@ export function AuditLogs() {
       </div>
 
       <div className="glass-card no-hover" style={styles.tableWrap}>
-        <table className="data-table" style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>北京时间</th>
-              <th style={styles.th}>操作人</th>
-              <th style={styles.th}>角色</th>
-              <th style={styles.th}>模块</th>
-              <th style={styles.th}>动作</th>
-              <th style={styles.th}>对象</th>
-              <th style={styles.th}>结果</th>
-              <th style={styles.th}>摘要</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredLogs.map(log => (
-              <tr key={log.id} style={styles.tr} onClick={() => setSelectedLog(log)}>
-                <td style={styles.td} className="mono">{formatDateTime(log.created_at)}</td>
-                <td style={styles.td}>
-                  <div style={styles.actorName}>{log.actor_name || log.actor_email || "-"}</div>
-                  <div style={styles.actorEmail}>{log.actor_email || log.actor_uid || "-"}</div>
-                </td>
-                <td style={styles.td}>{log.actor_role || "-"}</td>
-                <td style={styles.td}>{MODULE_LABELS[log.module] || log.module}</td>
-                <td style={styles.td}>{ACTION_LABELS[log.action] || log.action}</td>
-                <td style={styles.td}>
-                  <div style={styles.targetLabel}>{log.target_label || log.target_id || "-"}</div>
-                  <div style={styles.actorEmail}>{log.target_type || ""}</div>
-                </td>
-                <td style={styles.td}>
-                  <Badge text={log.status === "success" ? "成功" : "失败"} status={log.status} />
-                </td>
-                <td style={styles.td}>{log.message || log.error_message || "-"}</td>
-              </tr>
-            ))}
-            {filteredLogs.length === 0 && (
+        <div style={styles.tableTopBar}>
+          <div style={styles.resultMeta}>
+            {loading ? "日志加载中..." : `显示 ${startRow}-${endRow} 条，共 ${totalRows} 条匹配记录`}
+          </div>
+          <div style={styles.pageControls}>
+            <span>每页</span>
+            <select className="form-input" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} style={styles.pageSizeSelect}>
+              {PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="table-container" style={styles.tableContainer}>
+          <table className="data-table" style={styles.table}>
+            <thead>
               <tr>
-                <td colSpan={8} style={styles.empty}>暂无匹配日志</td>
+                <th style={styles.th}>北京时间</th>
+                <th style={styles.th}>操作人</th>
+                <th style={styles.th}>角色</th>
+                <th style={styles.th}>模块</th>
+                <th style={styles.th}>动作</th>
+                <th style={styles.th}>对象</th>
+                <th style={styles.th}>结果</th>
+                <th style={styles.th}>摘要</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {logs.map(log => (
+                <tr key={log.id} style={styles.tr} onClick={() => openDetail(log)}>
+                  <td style={styles.td} className="mono">{formatDateTime(log.created_at)}</td>
+                  <td style={styles.td}>
+                    <div style={styles.actorName}>{log.actor_name || log.actor_email || "-"}</div>
+                    <div style={styles.actorEmail}>{log.actor_email || log.actor_uid || "-"}</div>
+                  </td>
+                  <td style={styles.td}>{log.actor_role || "-"}</td>
+                  <td style={styles.td}>{MODULE_LABELS[log.module] || log.module}</td>
+                  <td style={styles.td}>{ACTION_LABELS[log.action] || log.action}</td>
+                  <td style={styles.td}>
+                    <div style={styles.targetLabel}>{log.target_label || log.target_id || "-"}</div>
+                    <div style={styles.actorEmail}>{log.target_type || ""}</div>
+                  </td>
+                  <td style={styles.td}>
+                    <Badge text={log.status === "success" ? "成功" : "失败"} status={log.status} />
+                  </td>
+                  <td style={styles.td}>{log.message || log.error_message || "-"}</td>
+                </tr>
+              ))}
+              {logs.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={styles.empty}>{loading ? "日志加载中..." : "暂无匹配日志"}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={styles.paginationRow}>
+          <button type="button" className="btn-secondary" disabled={displayPage <= 1 || loading} onClick={() => setPage(prev => Math.max(1, prev - 1))}>
+            上一页
+          </button>
+          <span style={styles.pageIndicator}>第 {displayPage} / {totalPages} 页</span>
+          <button type="button" className="btn-secondary" disabled={displayPage >= totalPages || loading} onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}>
+            下一页
+          </button>
+        </div>
       </div>
 
       <Modal isOpen={!!selectedLog} onClose={() => setSelectedLog(null)} title="操作日志详情" maxWidth="980px">
@@ -259,6 +390,7 @@ export function AuditLogs() {
               <div><span>对象</span><strong>{selectedLog.target_label || selectedLog.target_id || "-"}</strong></div>
               <div><span>结果</span><Badge text={selectedLog.status === "success" ? "成功" : "失败"} status={selectedLog.status} /></div>
             </div>
+            {detailLoading && <div style={styles.messageBox}>正在加载完整日志详情...</div>}
             <div style={styles.messageBox}>{selectedLog.message || selectedLog.error_message || "-"}</div>
             <JsonBlock title="操作前数据" value={selectedLog.before_data} />
             <JsonBlock title="操作后数据" value={selectedLog.after_data} />
@@ -274,13 +406,18 @@ export function AuditLogs() {
 
 const styles = {
   container: { display: "flex", flexDirection: "column", gap: "22px" },
-  pageHeader: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+  pageHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" },
   subtitle: { color: "var(--text-secondary)", marginTop: "6px", fontSize: "0.9rem" },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "14px" },
   statCard: { padding: "16px", display: "flex", alignItems: "center", gap: "12px" },
   filters: { padding: "16px", display: "grid", gridTemplateColumns: "2fr repeat(6, minmax(120px, 1fr))", gap: "10px", alignItems: "center" },
   searchBox: { display: "flex", alignItems: "center", gap: "8px" },
-  tableWrap: { padding: "18px", overflowX: "auto" },
+  tableWrap: { padding: "18px", display: "flex", flexDirection: "column", gap: "14px" },
+  tableTopBar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" },
+  resultMeta: { color: "var(--text-secondary)", fontSize: "0.86rem" },
+  pageControls: { display: "flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)", fontSize: "0.86rem" },
+  pageSizeSelect: { width: "92px", padding: "8px 10px" },
+  tableContainer: { borderRadius: "8px", border: "1px solid var(--border)" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "0.84rem" },
   th: { padding: "10px 12px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)", textAlign: "left", whiteSpace: "nowrap" },
   tr: { borderBottom: "1px solid var(--border)", cursor: "pointer" },
@@ -289,6 +426,8 @@ const styles = {
   actorEmail: { color: "var(--text-muted)", fontSize: "0.75rem", marginTop: "3px" },
   targetLabel: { fontWeight: 600 },
   empty: { padding: "36px", textAlign: "center", color: "var(--text-muted)" },
+  paginationRow: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", flexWrap: "wrap" },
+  pageIndicator: { color: "var(--text-secondary)", fontSize: "0.86rem" },
   detail: { display: "flex", flexDirection: "column", gap: "16px" },
   detailGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px" },
   messageBox: { padding: "12px", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--text-primary)" },

@@ -665,8 +665,8 @@ export function Transactions() {
         </div>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="财务流水录入" maxWidth="800px">
-        <form onSubmit={handleCreate}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="财务流水录入" maxWidth="800px" className="transaction-entry-modal">
+        <form onSubmit={handleCreate} className="transaction-entry-form">
           <div style={styles.formTabs}>
             {txTabOptions.map(tab => (
               <button
@@ -809,11 +809,11 @@ export function Transactions() {
 
             <div className="form-group" style={styles.fullWidth}>
               <label className="form-label">摘要说明</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} className="form-input" rows={3} placeholder="填写本笔流水的业务说明" />
+              <textarea value={description} onChange={e => setDescription(e.target.value)} className="form-input" rows={2} placeholder="填写本笔流水的业务说明" />
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+          <div style={styles.formActions}>
             <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">取消</button>
             <button type="submit" className="btn-primary">{currentUser?.role === "operator" ? "提交审核" : "确认录入"}</button>
           </div>
@@ -841,18 +841,19 @@ const styles = {
     color: "var(--text-primary)"
   },
   paginationRight: { display: "flex", alignItems: "center", gap: "12px" },
-  formTabs: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px", marginBottom: "18px" },
-  formTabBtn: { justifyContent: "center", minHeight: "40px", whiteSpace: "nowrap" },
+  formTabs: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "8px", marginBottom: "10px" },
+  formTabBtn: { justifyContent: "center", minHeight: "34px", whiteSpace: "nowrap", padding: "7px 10px" },
   pendingNotice: {
-    padding: "10px 12px",
-    marginBottom: "18px",
+    padding: "8px 10px",
+    marginBottom: "10px",
     borderRadius: "8px",
     border: "1px solid rgba(245, 158, 11, 0.22)",
     backgroundColor: "var(--accent-gold-glow)",
     color: "var(--accent-gold)",
-    fontSize: "0.85rem"
+    fontSize: "0.8rem"
   },
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "16px" },
+  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: "12px", rowGap: "10px" },
+  formActions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" },
   fullWidth: { gridColumn: "1 / -1" },
   entityPicker: {
     display: "flex",

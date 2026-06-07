@@ -2,16 +2,21 @@ import React, { useState, useEffect } from "react";
 import { querySQL } from "../../lib/db";
 import { writeAuditLog } from "../../lib/audit";
 import { useAuthContext } from "../../context/AuthContext";
-import { Settings as SettingsIcon, Plus, X, Tag, Database as DatabaseIcon, RefreshCw } from "lucide-react";
+import { Settings as SettingsIcon, Plus, X, Database as DatabaseIcon, RefreshCw, UserCog, Trash2 } from "lucide-react";
 
 export function Settings() {
   const { currentUser } = useAuthContext();
   const [systemTags, setSystemTags] = useState([]);
+  const [operators, setOperators] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [operatorLoading, setOperatorLoading] = useState(false);
   
   // States for adding new tag to a category
   const [newTagInputs, setNewTagInputs] = useState({});
   const [reconciling, setReconciling] = useState(false);
+  const [operatorEmail, setOperatorEmail] = useState("");
+  const [operatorName, setOperatorName] = useState("");
+  const [operatorUid, setOperatorUid] = useState("");
 
   const handleReconcile = async () => {
     if (!window.confirm("确定要对系统内的所有项目、资金池、出资方的累计财务数据进行一次全局重算与校准吗？\n\n该操作会根据所有的流水记录重新计算每个主体的统计金额，并修复历史由于直接增量删除或导入错误导致的误差。")) {
@@ -127,6 +132,7 @@ export function Settings() {
 
   useEffect(() => {
     fetchSettings();
+    fetchOperators();
   }, []);
 
   const fetchSettings = async () => {
@@ -141,6 +147,119 @@ export function Settings() {
       console.error("Failed to load settings", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOperators = async () => {
+    setOperatorLoading(true);
+    try {
+      const data = await querySQL(`
+        SELECT uid, email, role, display_name
+        FROM users
+        WHERE role = 'operator'
+        ORDER BY email ASC
+      `);
+      setOperators(data || []);
+    } catch (err) {
+      console.error("Failed to load operators", err);
+    } finally {
+      setOperatorLoading(false);
+    }
+  };
+
+  const handleCreateOperator = async (e) => {
+    e.preventDefault();
+    const email = operatorEmail.trim().toLowerCase();
+    const displayName = operatorName.trim() || email;
+    const uid = operatorUid.trim() || `uid-operator-${Date.now()}`;
+    if (!email) return;
+
+    try {
+      const existing = await querySQL(
+        `SELECT uid, email FROM users WHERE email = ? AND role = 'operator'`,
+        [email]
+      );
+      if (existing && existing.length > 0) {
+        alert("该邮箱已经是经办员。");
+        return;
+      }
+
+      await querySQL(
+        `INSERT INTO users (uid, email, role, investor_id, display_name)
+         VALUES (?, ?, 'operator', NULL, ?)`,
+        [uid, email, displayName]
+      );
+
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "users",
+        targetType: "operator",
+        targetId: uid,
+        targetLabel: email,
+        status: "success",
+        message: "新增经办员账号映射",
+        afterData: { uid, email, role: "operator", displayName }
+      });
+
+      setOperatorEmail("");
+      setOperatorName("");
+      setOperatorUid("");
+      await fetchOperators();
+      alert("经办员账号映射已创建。请确认该邮箱已在 CloudBase Auth 中创建登录账号。");
+    } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "users",
+        targetType: "operator",
+        targetLabel: email,
+        status: "failure",
+        message: "新增经办员账号映射失败",
+        requestPayload: { uid, email, displayName },
+        errorMessage: err.message
+      });
+      alert("创建失败：" + err.message);
+    }
+  };
+
+  const handleRemoveOperator = async (operator) => {
+    if (!window.confirm(`确定移除经办员 "${operator.email}" 的系统角色映射吗？\n\n该操作不会删除 CloudBase Auth 登录账号。`)) {
+      return;
+    }
+
+    try {
+      await querySQL(
+        `DELETE FROM users WHERE uid = ? AND role = 'operator'`,
+        [operator.uid]
+      );
+
+      await writeAuditLog({
+        actor: currentUser,
+        action: "delete",
+        module: "users",
+        targetType: "operator",
+        targetId: operator.uid,
+        targetLabel: operator.email,
+        status: "success",
+        message: "移除经办员账号映射",
+        beforeData: operator
+      });
+
+      await fetchOperators();
+    } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "delete",
+        module: "users",
+        targetType: "operator",
+        targetId: operator.uid,
+        targetLabel: operator.email,
+        status: "failure",
+        message: "移除经办员账号映射失败",
+        errorMessage: err.message
+      });
+      alert("移除失败：" + err.message);
     }
   };
 
@@ -233,6 +352,96 @@ export function Settings() {
         <div>
           <h2>系统设置</h2>
           <p>管理系统的全局配置项与元数据字典。</p>
+        </div>
+      </div>
+
+      <div className="glass-card no-hover" style={{ padding: "24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px" }}>
+          <UserCog size={20} color="var(--accent-blue)" />
+          <h3 style={{ margin: 0, fontSize: "1.2rem", color: "var(--text-primary)" }}>操作员账号管理</h3>
+        </div>
+
+        <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: "20px" }}>
+          维护财务经办员的系统角色映射。经办员可录入流水和分配方案，提交后需管理员审核生效。
+        </p>
+
+        <form onSubmit={handleCreateOperator} style={styles.operatorForm}>
+          <div style={styles.operatorField}>
+            <label className="form-label">登录邮箱 *</label>
+            <input
+              type="email"
+              value={operatorEmail}
+              onChange={(e) => setOperatorEmail(e.target.value)}
+              placeholder="请填写"
+              className="form-input"
+              required
+            />
+          </div>
+          <div style={styles.operatorField}>
+            <label className="form-label">显示名称</label>
+            <input
+              type="text"
+              value={operatorName}
+              onChange={(e) => setOperatorName(e.target.value)}
+              placeholder="请填写"
+              className="form-input"
+            />
+          </div>
+          <div style={styles.operatorField}>
+            <label className="form-label">Auth UID（选填）</label>
+            <input
+              type="text"
+              value={operatorUid}
+              onChange={(e) => setOperatorUid(e.target.value)}
+              placeholder="请填写"
+              className="form-input mono"
+            />
+          </div>
+          <button type="submit" className="btn-primary" style={styles.operatorSubmit}>
+            <Plus size={16} />
+            <span>新增经办员</span>
+          </button>
+        </form>
+
+        <div style={styles.operatorList}>
+          <div style={styles.operatorListHeader}>
+            <span>现有经办员</span>
+            <button type="button" onClick={fetchOperators} className="btn-secondary" style={styles.smallButton}>
+              <RefreshCw size={14} />
+              <span>刷新</span>
+            </button>
+          </div>
+
+          {operatorLoading ? (
+            <div style={styles.emptyText}>加载中...</div>
+          ) : operators.length === 0 ? (
+            <div style={styles.emptyText}>暂无经办员账号映射。</div>
+          ) : (
+            <div style={styles.operatorTable}>
+              {operators.map(operator => (
+                <div key={operator.uid} style={styles.operatorRow}>
+                  <div style={styles.operatorIdentity}>
+                    <strong>{operator.display_name || operator.email}</strong>
+                    <span className="mono">{operator.email}</span>
+                  </div>
+                  <span className="mono" style={styles.operatorUid}>{operator.uid}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveOperator(operator)}
+                    className="btn-secondary"
+                    style={styles.removeButton}
+                  >
+                    <Trash2 size={14} />
+                    <span>移除</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={styles.operatorNote}>
+          新增这里的映射后，还需要确保该邮箱已在 CloudBase Auth 中创建登录密码；移除映射不会删除 Auth 账号。
         </div>
       </div>
 
@@ -425,6 +634,87 @@ const styles = {
     marginBottom: "16px",
     paddingBottom: "12px",
     borderBottom: "1px solid rgba(255, 255, 255, 0.05)"
+  },
+  operatorForm: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "14px",
+    alignItems: "end",
+    marginBottom: "22px"
+  },
+  operatorField: {
+    flex: "1 1 220px",
+    minWidth: 0
+  },
+  operatorSubmit: {
+    height: "42px",
+    gap: "6px",
+    whiteSpace: "nowrap"
+  },
+  operatorList: {
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    overflow: "hidden",
+    backgroundColor: "rgba(9, 13, 26, 0.35)"
+  },
+  operatorListHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px 12px",
+    borderBottom: "1px solid var(--border)",
+    color: "var(--text-primary)",
+    fontWeight: 700
+  },
+  smallButton: {
+    height: "30px",
+    padding: "4px 10px",
+    fontSize: "0.8rem",
+    gap: "6px"
+  },
+  emptyText: {
+    padding: "14px 12px",
+    color: "var(--text-secondary)",
+    fontSize: "0.9rem"
+  },
+  operatorTable: {
+    display: "flex",
+    flexDirection: "column"
+  },
+  operatorRow: {
+    display: "grid",
+    gridTemplateColumns: "1.4fr 1fr auto",
+    gap: "12px",
+    alignItems: "center",
+    padding: "10px 12px",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.05)"
+  },
+  operatorIdentity: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+    minWidth: 0,
+    color: "var(--text-primary)",
+    fontSize: "0.9rem"
+  },
+  operatorUid: {
+    color: "var(--text-secondary)",
+    fontSize: "0.78rem",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap"
+  },
+  removeButton: {
+    height: "32px",
+    padding: "4px 10px",
+    gap: "6px",
+    color: "var(--accent-red)"
+  },
+  operatorNote: {
+    marginTop: "12px",
+    color: "var(--text-secondary)",
+    fontSize: "0.82rem",
+    lineHeight: 1.5
   },
   tagBadge: {
     display: "flex", 

@@ -189,8 +189,11 @@ CREATE TABLE `audit_logs` (
   KEY `idx_audit_created_at` (`created_at`),
   KEY `idx_audit_actor_uid` (`actor_uid`),
   KEY `idx_audit_module_action` (`module`, `action`),
+  KEY `idx_audit_module_action_created_at` (`module`, `action`, `created_at`),
   KEY `idx_audit_target` (`target_type`, `target_id`),
-  KEY `idx_audit_status` (`status`)
+  KEY `idx_audit_status` (`status`),
+  KEY `idx_audit_status_created_at` (`status`, `created_at`),
+  KEY `idx_audit_actor_role_created_at` (`actor_role`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- 10. 系统用户与角色关系表

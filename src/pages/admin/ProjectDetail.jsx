@@ -833,13 +833,14 @@ export function ProjectDetail() {
       </div>
 
       {/* 弹窗：快捷录入项目流水 */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`登记项目收支 - ${project.name}`}>
-        <form onSubmit={handleCreateTx} style={styles.form}>
-          <div style={{ display: "flex", gap: "12px", marginBottom: "20px", overflowX: "auto", paddingBottom: "4px" }}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`登记项目收支 - ${project.name}`} maxWidth="760px" className="project-tx-entry-modal">
+        <form onSubmit={handleCreateTx} style={styles.form} className="project-tx-entry-form">
+          <div style={styles.projectTxTabs}>
             <button 
               type="button"
               className={txType === "investment" ? "btn-primary" : "btn-secondary"}
               onClick={() => setTxType("investment")}
+              style={styles.projectTxTabBtn}
             >
               2. 向单独项目打款
             </button>
@@ -847,6 +848,7 @@ export function ProjectDetail() {
               type="button"
               className={txType === "return" ? "btn-primary" : "btn-secondary"}
               onClick={() => setTxType("return")}
+              style={styles.projectTxTabBtn}
             >
               3. 项目回款入账
             </button>
@@ -859,23 +861,26 @@ export function ProjectDetail() {
             </div>
             {projectInvestors.length > 0 && (
               <>
-                <div style={{ height: "1px", backgroundColor: "var(--border)", margin: "4px 0" }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
-                  <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>已登记出资方：</span>
-                  {projectInvestors.map(pi => (
-                    <div key={pi.investor_id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-                      <span style={{ color: "var(--accent-blue)" }}>• {pi.investor_name}</span>
-                      <span className="mono" style={{ color: "var(--text-secondary)" }}>认缴: {formatCNY(pi.committed_amount, false)}</span>
+                <div style={styles.lockedDivider} />
+                <div style={styles.projectInvestorPreview}>
+                  <span style={styles.projectInvestorPreviewTitle}>已登记出资方：</span>
+                  {projectInvestors.slice(0, 9).map(pi => (
+                    <div key={pi.investor_id} style={styles.projectInvestorChip}>
+                      <span style={styles.projectInvestorChipName}>{pi.investor_name}</span>
+                      <span className="mono" style={styles.projectInvestorChipAmount}>认缴 {formatCNY(pi.committed_amount, false)}</span>
                     </div>
                   ))}
+                  {projectInvestors.length > 9 && (
+                    <div style={styles.projectInvestorMore}>另有 {projectInvestors.length - 9} 个出资方</div>
+                  )}
                 </div>
               </>
             )}
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={styles.projectTxFormStack}>
 
-            <div className="form-group" style={{ marginBottom: "12px" }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">关联具体投资人 *</label>
               <select value={txInvestorId} onChange={(e) => setTxInvestorId(e.target.value)} className="form-input" required>
                 <option value="">-- 请选择打款/提现对应的投资方 --</option>
@@ -886,14 +891,14 @@ export function ProjectDetail() {
                 ))}
               </select>
               {projectInvestors.length === 0 && (
-                <p style={{ fontSize: "0.75rem", color: "var(--accent-red)", marginTop: "6px" }}>
+                <p style={{ fontSize: "0.75rem", color: "var(--accent-red)", marginTop: "4px" }}>
                   当前项目尚未添加任何出资方，请先在“出资方”Tab添加。
                 </p>
               )}
             </div>
 
-            <div style={{ display: "flex", gap: "16px" }}>
-              <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+            <div style={styles.projectTxRow}>
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                 <label className="form-label">发生金额 (元) *</label>
                 <AmountInput 
                   value={txAmount} 
@@ -901,7 +906,7 @@ export function ProjectDetail() {
                   placeholder="请输入本次交易发生的金额"
                 />
               </div>
-              <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                 <label className="form-label">发生日期 *</label>
                 <input 
                   type="date" 
@@ -913,8 +918,8 @@ export function ProjectDetail() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: "16px" }}>
-              <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+            <div style={styles.projectTxRow}>
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                 <label className="form-label">交易类型 (系统定义) *</label>
                 <select value={customType} onChange={(e) => setCustomType(e.target.value)} className="form-input" required style={{ height: "42px" }}>
                   <option value="capital_call">实缴打款</option>
@@ -926,7 +931,7 @@ export function ProjectDetail() {
                   <option value="adjustment">人工核校</option>
                 </select>
               </div>
-              <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                 <label className="form-label">凭证流水号</label>
                 <input 
                   type="text" 
@@ -939,7 +944,7 @@ export function ProjectDetail() {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: "12px" }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">交易摘要说明</label>
               <textarea 
                 value={txDesc}
@@ -952,7 +957,7 @@ export function ProjectDetail() {
             </div>
           </div>
 
-          <div style={styles.modalActions}>
+          <div style={styles.projectTxModalActions}>
             <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">取消</button>
             <button type="submit" className="btn-primary">确认登账</button>
           </div>
@@ -1338,6 +1343,75 @@ const styles = {
     gap: "8px",
     fontSize: "0.9rem"
   },
+  projectTxTabs: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "10px",
+    marginBottom: "10px"
+  },
+  projectTxTabBtn: {
+    justifyContent: "center",
+    minHeight: "36px",
+    padding: "8px 12px",
+    whiteSpace: "nowrap"
+  },
+  lockedDivider: {
+    height: "1px",
+    backgroundColor: "var(--border)",
+    margin: "2px 0"
+  },
+  projectInvestorPreview: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    columnGap: "8px",
+    rowGap: "5px",
+    marginTop: "2px"
+  },
+  projectInvestorPreviewTitle: {
+    gridColumn: "1 / -1",
+    fontSize: "0.78rem",
+    color: "var(--text-secondary)"
+  },
+  projectInvestorChip: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: "8px",
+    minWidth: 0,
+    padding: "3px 8px",
+    borderRadius: "6px",
+    backgroundColor: "rgba(37, 99, 235, 0.07)",
+    border: "1px solid rgba(37, 99, 235, 0.16)"
+  },
+  projectInvestorChipName: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--accent-blue)",
+    fontSize: "0.8rem",
+    fontWeight: 600
+  },
+  projectInvestorChipAmount: {
+    flexShrink: 0,
+    color: "var(--text-secondary)",
+    fontSize: "0.76rem"
+  },
+  projectInvestorMore: {
+    gridColumn: "1 / -1",
+    fontSize: "0.78rem",
+    color: "var(--text-secondary)",
+    textAlign: "right"
+  },
+  projectTxFormStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px"
+  },
+  projectTxRow: {
+    display: "flex",
+    gap: "12px"
+  },
   lockedRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -1394,6 +1468,14 @@ const styles = {
     marginTop: "16px",
     borderTop: "1px solid var(--border)",
     paddingTop: "16px"
+  },
+  projectTxModalActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "10px",
+    marginTop: "12px",
+    borderTop: "1px solid var(--border)",
+    paddingTop: "12px"
   },
   loading: {
     padding: "80px",

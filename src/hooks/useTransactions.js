@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { querySQL } from "../lib/db";
 import { writeAuditLog } from "../lib/audit";
+import { notifyPendingApprovalsChanged } from "../lib/pendingApprovals";
 
 export function useTransactions() {
   const [loading, setLoading] = useState(false);
@@ -90,6 +91,7 @@ export function useTransactions() {
           afterData: { id: txId, ...tx, status },
           requestPayload: tx
         });
+        notifyPendingApprovalsChanged();
         return txId;
       }
 
@@ -323,6 +325,7 @@ export function useTransactions() {
         beforeData: txsToApprove,
         afterData: txsToApprove.map(item => ({ ...item, status: "approved" }))
       });
+      notifyPendingApprovalsChanged();
       return { approvedIds: txsToApprove.map(item => item.id) };
     } catch (err) {
       await writeAuditLog({
@@ -367,6 +370,7 @@ export function useTransactions() {
         beforeData: txsToReject,
         afterData: txsToReject.map(item => ({ ...item, status: "rejected" }))
       });
+      notifyPendingApprovalsChanged();
       return { rejectedIds: txsToReject.map(item => item.id) };
     } catch (err) {
       await writeAuditLog({
@@ -417,6 +421,7 @@ export function useTransactions() {
         message: pairedTxs.length > 0 ? "删除资金池转款双分录" : "删除资金流水",
         beforeData: txsToDelete
       });
+      notifyPendingApprovalsChanged();
       return { deletedIds: txsToDelete.map(item => item.id) };
     } catch (err) {
       await writeAuditLog({

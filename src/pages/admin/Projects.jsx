@@ -15,7 +15,6 @@ import { exportToExcel, importFromExcel, downloadTemplate } from "../../lib/exce
 const EXPORT_HEADERS_MAP = {
   name: "项目名称",
   id: "项目 ID",
-  pool_name: "出资来源池名称",
   committed_amount: "计划出资规模",
   status: "立项阶段",
   start_date: "起始日期",
@@ -27,7 +26,6 @@ const EXPORT_HEADERS_MAP = {
 const IMPORT_HEADERS_MAP = {
   "项目名称": "name",
   "项目 ID": "id",
-  "出资来源池名称": "pool_name",
   "计划出资规模": "committed_amount",
   "立项阶段": "status",
   "起始日期": "start_date",
@@ -385,13 +383,12 @@ export function Projects() {
 
       const validatedData = [];
       const errors = [];
-      const existingCodes = projects.map(p => p.code.toLowerCase());
+      const existingIds = projects.map(p => String(p.id || "").toLowerCase());
 
       rawData.forEach((row, index) => {
         const rowNum = index + 2;
         const rId = (row.id || "").toString().trim();
         const rName = (row.name || "").toString().trim();
-        const rPool = (row.pool_name || "").toString().trim();
         const rCommitted = Number(row.committed_amount || 0);
         let rStatus = (row.status || "").toString().trim();
         const rTags = (row.tags || "").toString().trim();
@@ -449,13 +446,12 @@ export function Projects() {
         }
 
         const tagsArray = rTags ? rTags.split(/[,，]/).map(t => t.trim()).filter(Boolean) : [];
-        const poolObj = pools.find(p => p.name === rPool);
 
         validatedData.push({
           id: rId,
           name: rName,
-          poolId: poolObj ? poolObj.id : null,
-          committedAmount: rAmt,
+          poolId: null,
+          committedAmount: rCommitted,
           status: rStatus,
           tags: JSON.stringify(tagsArray),
           description: rDesc,
@@ -804,7 +800,7 @@ export function Projects() {
                 required
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
-                placeholder="如：Pro-20240101-123"
+                placeholder="请填写"
                 className="form-input mono"
               />
             </div>
@@ -814,7 +810,7 @@ export function Projects() {
                 type="text" 
                 value={contractNo}
                 onChange={(e) => setContractNo(e.target.value)}
-                placeholder="如：HT-2024-001"
+                placeholder="请填写"
                 className="form-input mono"
               />
             </div>
@@ -828,7 +824,7 @@ export function Projects() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="如：高倍率固态锂电池二期研发"
+                placeholder="请填写"
                 className="form-input"
               />
             </div>
@@ -854,7 +850,7 @@ export function Projects() {
               <AmountInput 
                 value={committedAmount} 
                 onChange={setCommittedAmount}
-                placeholder="计划出资额"
+                placeholder="请填写"
               />
             </div>
             <div className="form-group" style={{ flex: 1, marginBottom: "12px" }}>
@@ -921,7 +917,7 @@ export function Projects() {
               type="text" 
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
-              placeholder="自定义标签用逗号隔开，或者点击上方已有标签快速添加"
+              placeholder="请填写"
               className="form-input"
               style={{ height: "36px", fontSize: "0.85rem" }}
             />
@@ -932,7 +928,7 @@ export function Projects() {
             <textarea 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="详细描述项目主营业务、估值、主要回款约定..."
+              placeholder="请填写"
               className="form-input"
               rows={2}
               style={{ resize: "none" }}

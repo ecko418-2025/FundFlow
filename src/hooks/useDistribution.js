@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { querySQL } from "../lib/db";
 import { writeAuditLog } from "../lib/audit";
+import { notifyPendingApprovalsChanged } from "../lib/pendingApprovals";
 
 export function useDistribution() {
   const [loading, setLoading] = useState(false);
@@ -103,6 +104,7 @@ export function useDistribution() {
         requestPayload: dist
       });
 
+      if (dist.status === "pending") notifyPendingApprovalsChanged();
       return distId;
     } catch (err) {
       console.error("创建分配失败:", err);
@@ -145,6 +147,7 @@ export function useDistribution() {
         beforeData: dist,
         afterData: { ...dist, status: "confirmed" }
       });
+      notifyPendingApprovalsChanged();
       return true;
     } catch (err) {
       console.error("审核分配失败:", err);
@@ -187,6 +190,7 @@ export function useDistribution() {
         beforeData: dist,
         afterData: { ...dist, status: "rejected" }
       });
+      notifyPendingApprovalsChanged();
       return true;
     } catch (err) {
       console.error("驳回分配失败:", err);
@@ -226,6 +230,7 @@ export function useDistribution() {
         message: "删除收益分配方案",
         beforeData: { distribution: before[0], items }
       });
+      notifyPendingApprovalsChanged();
       return true;
     } catch (err) {
       console.error("删除分配记录失败:", err);

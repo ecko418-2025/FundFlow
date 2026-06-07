@@ -1,8 +1,11 @@
 import { querySQL } from "./db";
 
 const MAX_TEXT = 500;
-const AUDIT_RETRY_COOLDOWN_MS = 30000;
-let auditMutedUntil = 0;
+const AUDIT_RETRY_DELAY_MS = 500;
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function getBeijingDateTime() {
   const parts = new Intl.DateTimeFormat("zh-CN", {
@@ -57,45 +60,45 @@ export async function writeAuditLog({
   requestPayload,
   errorMessage
 }) {
-  const now = Date.now();
-  if (now < auditMutedUntil) return;
-
   try {
     const auditId = `AUD-${Date.now()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
     const normalizedActor = normalizeActor(actor);
     const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
-
-    await querySQL(
-      `INSERT INTO audit_logs (
+    const sql = `INSERT INTO audit_logs (
         id, actor_uid, actor_email, actor_role, actor_name,
         action, module, target_type, target_id, target_label,
         status, message, before_data, after_data, request_payload,
         error_message, user_agent, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        auditId,
-        normalizedActor.uid,
-        normalizedActor.email,
-        normalizedActor.role,
-        normalizedActor.name,
-        action,
-        module,
-        targetType || null,
-        targetId || null,
-        truncate(targetLabel),
-        status,
-        truncate(message),
-        stringifySafe(beforeData),
-        stringifySafe(afterData),
-        stringifySafe(requestPayload),
-        truncate(errorMessage, 2000),
-        truncate(userAgent),
-        getBeijingDateTime()
-      ],
-      { silent: true }
-    );
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const params = [
+      auditId,
+      normalizedActor.uid,
+      normalizedActor.email,
+      normalizedActor.role,
+      normalizedActor.name,
+      action,
+      module,
+      targetType || null,
+      targetId || null,
+      truncate(targetLabel),
+      status,
+      truncate(message),
+      stringifySafe(beforeData),
+      stringifySafe(afterData),
+      stringifySafe(requestPayload),
+      truncate(errorMessage, 2000),
+      truncate(userAgent),
+      getBeijingDateTime()
+    ];
+
+    try {
+      await querySQL(sql, params, { silent: true });
+    } catch {
+      await wait(AUDIT_RETRY_DELAY_MS);
+      await querySQL(sql, params, { silent: true });
+    }
   } catch (err) {
-    auditMutedUntil = Date.now() + AUDIT_RETRY_COOLDOWN_MS;
-    // 审计是旁路能力，失败时不打扰业务页面；管理员仍可通过云函数日志排查。
+    // 审计是旁路能力，失败时不打扰业务页面；但不能静默跳过后续日志。
+    console.warn("审计日志写入失败：", err?.message || err);
   }
 }

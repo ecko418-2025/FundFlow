@@ -13,18 +13,20 @@ import {
   Settings,
   ShieldCheck
 } from "lucide-react";
+import { usePendingApprovals } from "../../hooks/usePendingApprovals";
 
 export function Sidebar({ user, onLogout, isMobileOpen = false, onNavigate = null }) {
   const location = useLocation();
   const role = user?.role || "lp";
+  const pendingApprovals = usePendingApprovals(role === "admin");
 
   const adminMenu = [
     { name: "总览数据", path: "/admin", icon: LayoutDashboard },
     { name: "资金池管理", path: "/admin/pools", icon: Layers },
     { name: "出资方管理", path: "/admin/investors", icon: Users },
     { name: "项目管理", path: "/admin/projects", icon: Briefcase },
-    { name: "核心流水账", path: "/admin/transactions", icon: DollarSign },
-    { name: "收益分配", path: "/admin/distribution", icon: PieChart },
+    { name: "核心流水账", path: "/admin/transactions", icon: DollarSign, badgeCount: pendingApprovals.transactions },
+    { name: "收益分配", path: "/admin/distribution", icon: PieChart, badgeCount: pendingApprovals.distributions },
     { name: "操作安全日志", path: "/admin/audit-logs", icon: ShieldCheck },
     { name: "系统设置", path: "/admin/settings", icon: Settings }
   ];
@@ -69,13 +71,19 @@ export function Sidebar({ user, onLogout, isMobileOpen = false, onNavigate = nul
               key={item.path} 
               to={item.path} 
               onClick={onNavigate || undefined}
+              title={item.badgeCount > 0 ? `${item.name}：${item.badgeCount} 个待审核任务` : item.name}
               style={{
                 ...styles.navLink,
                 ...(isActive ? styles.navLinkActive : {})
               }}
             >
               <Icon size={20} color={isActive ? "var(--text-primary)" : "var(--text-secondary)"} />
-              <span>{item.name}</span>
+              <span style={styles.navText}>{item.name}</span>
+              {item.badgeCount > 0 && (
+                <span style={styles.badge} aria-label={`${item.name}有${item.badgeCount}个待审核任务`}>
+                  {item.badgeCount > 99 ? "99+" : item.badgeCount}
+                </span>
+              )}
               {isActive && <div style={styles.activeIndicator} />}
             </Link>
           );
@@ -156,6 +164,26 @@ const styles = {
     fontWeight: "500",
     transition: "all 0.2s ease",
     position: "relative"
+  },
+  navText: {
+    flex: 1,
+    minWidth: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
+  },
+  badge: {
+    minWidth: "20px",
+    height: "20px",
+    padding: "0 6px",
+    borderRadius: "999px",
+    backgroundColor: "var(--accent-red)",
+    color: "#fff",
+    fontSize: "0.72rem",
+    fontWeight: 700,
+    lineHeight: "20px",
+    textAlign: "center",
+    boxShadow: "0 0 0 2px var(--bg-secondary)"
   },
   navLinkActive: {
     backgroundColor: "var(--bg-tertiary)",

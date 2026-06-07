@@ -569,7 +569,7 @@ export function Investors() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="如：张三 或 招商局母基金二期"
+                placeholder="请填写"
                 className="form-input"
               />
             </div>
@@ -596,7 +596,7 @@ export function Investors() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="如：zhangsan@example.com"
+                placeholder="请填写"
                 className="form-input"
               />
             </div>
@@ -607,7 +607,7 @@ export function Investors() {
                 type="text" 
                 value={cloudbaseUid}
                 onChange={(e) => setCloudbaseUid(e.target.value)}
-                placeholder="云开发控制台 UID，不填则生成临时 UID"
+                placeholder="请填写"
                 className="form-input"
               />
             </div>
@@ -620,7 +620,7 @@ export function Investors() {
                 type="text" 
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="如：13800000000"
+                placeholder="请填写"
                 className="form-input"
               />
             </div>
@@ -631,7 +631,7 @@ export function Investors() {
                 type="text" 
                 value={contact}
                 onChange={(e) => setContact(e.target.value)}
-                placeholder="机构出资人必须填写"
+                placeholder="请填写"
                 className="form-input"
               />
             </div>
@@ -642,7 +642,7 @@ export function Investors() {
             <textarea 
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="补充资产归属、特殊分成协议等"
+              placeholder="请填写"
               className="form-input"
               rows={2}
               style={{ resize: "none" }}

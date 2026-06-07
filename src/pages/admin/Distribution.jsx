@@ -10,6 +10,14 @@ import { exportDistributionReport } from "../../lib/excel";
 import { CheckCircle, PieChart, Info, HelpCircle, FileText, Download, Printer, Trash2, Check, XCircle } from "lucide-react";
 import { Modal } from "../../components/ui/Modal";
 
+function getTodayDateInputValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function Distribution() {
   const { currentUser } = useAuthContext();
   const { pools } = usePools();
@@ -30,7 +38,7 @@ export function Distribution() {
   const [targetSearch, setTargetSearch] = useState("");
   const [isPenetrate, setIsPenetrate] = useState(false);
   const [totalAmount, setTotalAmount] = useState("");
-  const [distributionDate, setDistributionDate] = useState(new Date().toISOString().slice(0, 10));
+  const [distributionDate, setDistributionDate] = useState(getTodayDateInputValue);
   const [description, setDescription] = useState("");
 
   // 计算得出的出资人份额及金额明细列表
@@ -391,6 +399,7 @@ export function Distribution() {
       setTargetId("");
       setTargetSearch("");
       setTotalAmount("");
+      setDistributionDate(getTodayDateInputValue());
       setDescription("");
       
       // 重新加载历史记录
@@ -409,7 +418,7 @@ export function Distribution() {
 
       <div style={styles.contentGrid}>
         {/* 左侧：分配配置表单 */}
-        <div className="glass-card" style={styles.formCard}>
+        <div className="glass-card distribution-form-card" style={styles.formCard}>
           <h3 style={styles.sectionTitle}>
             <PieChart size={18} color="var(--accent-blue)" />
             <span>新建分配分红方案</span>
@@ -423,7 +432,7 @@ export function Distribution() {
                 value={targetSearch}
                 onChange={(e) => setTargetSearch(e.target.value)}
                 className="form-input"
-                placeholder="搜索资金池或项目名称 / ID / 编号..."
+                placeholder="项目名称/ID"
                 style={styles.targetSearchInput}
               />
               <select 
@@ -451,7 +460,7 @@ export function Distribution() {
               </div>
             </div>
 
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+            <div className="form-group" style={styles.checkboxGroup}>
               <input 
                 type="checkbox" 
                 id="isPenetrate" 
@@ -487,9 +496,9 @@ export function Distribution() {
               <textarea 
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="例如：芯片项目一期退出收益按有效份额分配"
+                placeholder="备注"
                 className="form-input"
-                rows={3}
+                rows={2}
                 style={{ resize: "none" }}
               />
             </div>
@@ -500,12 +509,12 @@ export function Distribution() {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "12px", marginTop: "12px" }}>
+            <div style={styles.actionRow}>
               <button 
                 type="button" 
                 onClick={handleCalculate}
                 className="btn-secondary" 
-                style={{ flex: 1, padding: "12px", justifyContent: "center" }}
+                style={styles.actionButton}
               >
                 <span>计算分配金额</span>
               </button>
@@ -513,7 +522,7 @@ export function Distribution() {
                 type="submit" 
                 disabled={distLoading || lpItems.length === 0} 
                 className="btn-primary" 
-                style={{ flex: 1, padding: "12px", justifyContent: "center" }}
+                style={styles.actionButton}
               >
                 <span>{distLoading ? "提交记录中..." : currentUser?.role === "operator" ? "提交审核" : "确认并记录分红"}</span>
               </button>
@@ -835,7 +844,7 @@ const styles = {
     width: "100%"
   },
   formCard: {
-    padding: "24px"
+    padding: "18px"
   },
   detailCard: {
     padding: "24px",
@@ -857,14 +866,31 @@ const styles = {
     display: "flex",
     flexDirection: "column"
   },
+  checkboxGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginTop: "2px",
+    marginBottom: "12px"
+  },
   targetSearchInput: {
-    marginBottom: "8px"
+    marginBottom: "6px"
   },
   targetHint: {
-    marginTop: "8px",
+    marginTop: "6px",
     color: "var(--text-secondary)",
     fontSize: "0.78rem",
     lineHeight: 1.4
+  },
+  actionRow: {
+    display: "flex",
+    gap: "10px",
+    marginTop: "6px"
+  },
+  actionButton: {
+    flex: 1,
+    padding: "10px",
+    justifyContent: "center"
   },
   submitBtn: {
     width: "100%",

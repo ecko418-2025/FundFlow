@@ -10,7 +10,6 @@ const normalizeEmail = (email = "") => email.trim().toLowerCase();
 const getFallbackRole = (email = "") => {
   const normalizedEmail = normalizeEmail(email);
   if (normalizedEmail.includes("admin") || normalizedEmail === "ecko418@gmail.com") return "admin";
-  if (normalizedEmail.includes("operator")) return "operator";
   return "lp";
 };
 

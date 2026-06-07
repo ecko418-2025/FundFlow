@@ -255,6 +255,123 @@ body {
   box-shadow: 0 0 0 3px var(--accent-blue-glow);
 }
 
+.distribution-form-card {
+  padding: 18px !important;
+}
+
+.distribution-form-card .form-group {
+  margin-bottom: 12px;
+}
+
+.distribution-form-card .form-label {
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+.distribution-form-card .form-input {
+  min-height: 40px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  font-size: 0.9rem;
+}
+
+.distribution-form-card textarea.form-input {
+  min-height: 70px;
+  line-height: 1.45;
+}
+
+.transaction-entry-modal {
+  padding: 16px !important;
+  max-height: calc(100vh - 24px) !important;
+  overflow: visible !important;
+}
+
+.transaction-entry-modal .app-modal-body {
+  overflow: visible !important;
+}
+
+.transaction-entry-modal h3 {
+  font-size: 1rem !important;
+}
+
+.transaction-entry-modal .app-modal-header {
+  margin-bottom: 10px !important;
+  padding-bottom: 8px !important;
+}
+
+.transaction-entry-form .form-group {
+  margin-bottom: 0;
+}
+
+.transaction-entry-form .form-label {
+  margin-bottom: 4px;
+  font-size: 0.78rem;
+}
+
+.transaction-entry-form .form-input {
+  min-height: 38px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 0.88rem;
+}
+
+.transaction-entry-form textarea.form-input {
+  min-height: 58px;
+  line-height: 1.35;
+}
+
+.transaction-entry-form .btn-primary,
+.transaction-entry-form .btn-secondary {
+  min-height: 36px;
+  padding: 8px 14px;
+}
+
+.project-tx-entry-modal {
+  padding: 16px !important;
+  max-height: calc(100vh - 24px) !important;
+  overflow: visible !important;
+}
+
+.project-tx-entry-modal .app-modal-body {
+  overflow: visible !important;
+}
+
+.project-tx-entry-modal .app-modal-header {
+  margin-bottom: 10px !important;
+  padding-bottom: 8px !important;
+}
+
+.project-tx-entry-modal h3 {
+  font-size: 1rem !important;
+}
+
+.project-tx-entry-form .form-group {
+  margin-bottom: 0;
+}
+
+.project-tx-entry-form .form-label {
+  margin-bottom: 4px;
+  font-size: 0.78rem;
+}
+
+.project-tx-entry-form .form-input {
+  min-height: 38px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 0.88rem;
+}
+
+.project-tx-entry-form textarea.form-input {
+  min-height: 56px;
+  line-height: 1.35;
+}
+
+.project-tx-entry-form .btn-primary,
+.project-tx-entry-form .btn-secondary {
+  min-height: 36px;
+  padding: 8px 14px;
+}
+
 /* 金额文字颜色高亮 */
 .amt-in {
   color: var(--accent-green) !important;

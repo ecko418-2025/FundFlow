@@ -290,7 +290,7 @@ export function Pools() {
           <Search size={16} className="search-icon" />
           <input 
             type="text" 
-            placeholder="搜索资金池名称、编号..." 
+            placeholder="搜索名称、编号" 
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
             className="search-input"
@@ -396,7 +396,7 @@ export function Pools() {
                 required
                 value={poolId}
                 onChange={(e) => setPoolId(e.target.value)}
-                placeholder="如：Pro-20240101-123"
+                placeholder="请填写"
                 className="form-input mono"
               />
             </div>
@@ -406,7 +406,7 @@ export function Pools() {
                 type="text" 
                 value={poolContractNo}
                 onChange={(e) => setPoolContractNo(e.target.value)}
-                placeholder="如：HT-2024-001"
+                placeholder="请填写"
                 className="form-input mono"
               />
             </div>
@@ -419,7 +419,7 @@ export function Pools() {
               required
               value={poolName}
               onChange={(e) => setPoolName(e.target.value)}
-              placeholder="如：2024年度大中华成长一期池"
+              placeholder="请填写"
               className="form-input"
             />
           </div>
@@ -473,7 +473,7 @@ export function Pools() {
             <textarea 
               value={poolDesc}
               onChange={(e) => setPoolDesc(e.target.value)}
-              placeholder="说明资金池投资策略..."
+              placeholder="请填写"
               className="form-input"
               rows={3}
               style={{ resize: "none" }}
