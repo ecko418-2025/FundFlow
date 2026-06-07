@@ -8,6 +8,7 @@ import { AmountInput } from "../../components/ui/AmountInput";
 import { formatCNY, formatPercent, formatDate } from "../../lib/formatters";
 import { exportDistributionReport } from "../../lib/excel";
 import { getDistributionStamp } from "../../lib/distributionStamp";
+import { writeAuditLog } from "../../lib/audit";
 import { CheckCircle, PieChart, Info, HelpCircle, FileText, Download, Printer, Trash2, Check, XCircle, Search } from "lucide-react";
 import { Modal } from "../../components/ui/Modal";
 
@@ -246,7 +247,7 @@ export function Distribution() {
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const { targetType, targetName } = getTargetInfo();
     exportDistributionReport({
       targetName,
@@ -258,10 +259,54 @@ export function Distribution() {
       lpItems,
       fileName: `收益分配计算表_${distributionDate}`
     });
+    await writeAuditLog({
+      actor: currentUser,
+      action: "export",
+      module: "distributions",
+      targetType: targetType || "distribution",
+      targetId,
+      targetLabel: targetName || targetId,
+      status: "success",
+      message: "导出收益分配计算表 Excel",
+      requestPayload: {
+        targetType,
+        targetId,
+        targetName,
+        distributionDate,
+        totalAmount,
+        isPenetrate,
+        rowCount: lpItems.length
+      }
+    });
   };
 
-  const handlePrintPdf = () => {
+  const handlePrintPdf = async () => {
     const win = window.open('', '', 'width=900,height=650');
+    const { targetType, targetName } = getTargetInfo();
+    await writeAuditLog({
+      actor: currentUser,
+      action: "print",
+      module: "distributions",
+      targetType: targetType || "distribution",
+      targetId,
+      targetLabel: targetName || targetId,
+      status: win ? "success" : "failure",
+      message: win ? "打印/导出收益分配计算表 PDF" : "打开收益分配打印窗口失败",
+      requestPayload: {
+        targetType,
+        targetId,
+        targetName,
+        distributionDate,
+        totalAmount,
+        isPenetrate,
+        rowCount: lpItems.length
+      },
+      errorMessage: win ? undefined : "浏览器阻止了打印窗口"
+    });
+    if (!win) {
+      alert("浏览器阻止了打印窗口，请允许弹窗后重试。");
+      return;
+    }
 
     const showDirectPreview = isPenetrate && directItems.some(item => item.entity_type === "pool");
     const directRowsHtml = directItems.map(item => `
@@ -287,8 +332,6 @@ export function Distribution() {
     const totalAmountSum = lpItems.reduce((sum, i) => sum + i.amount, 0);
     const directShareTotal = directItems.reduce((sum, i) => sum + Number(i.effective_share), 0);
     const directAmountTotal = directItems.reduce((sum, i) => sum + i.amount, 0);
-
-    const { targetType, targetName } = getTargetInfo();
 
     win.document.write(`
       <html>

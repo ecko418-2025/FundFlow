@@ -341,7 +341,7 @@ export function Projects() {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const statusLabels = { pre: "投前考察", active: "存续管理", exited: "退出清算", archived: "项目归档" };
     const dataToExport = projects.map(p => {
       let tagsStr = "";
@@ -364,10 +364,29 @@ export function Projects() {
       };
     });
     exportToExcel(dataToExport, EXPORT_HEADERS_MAP, "项目列表备份");
+    await writeAuditLog({
+      actor: currentUser,
+      action: "export",
+      module: "projects",
+      targetType: "project",
+      status: "success",
+      message: `导出项目列表 ${dataToExport.length} 条`,
+      requestPayload: { count: dataToExport.length, fileName: "项目列表备份" }
+    });
   };
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     downloadTemplate(Object.values(EXPORT_HEADERS_MAP), "项目导入模板");
+    await writeAuditLog({
+      actor: currentUser,
+      action: "download_template",
+      module: "projects",
+      targetType: "template",
+      targetId: "projects_import",
+      targetLabel: "项目导入模板",
+      status: "success",
+      message: "下载项目导入模板"
+    });
   };
 
   const handleImport = async (e) => {

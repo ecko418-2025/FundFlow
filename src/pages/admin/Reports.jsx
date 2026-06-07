@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { usePools } from "../../hooks/usePools";
+import { useAuthContext } from "../../context/AuthContext";
 import { querySQL } from "../../lib/db";
+import { writeAuditLog } from "../../lib/audit";
 import { DataTable } from "../../components/ui/DataTable";
 import { formatCNY } from "../../lib/formatters";
 import { FileText, Download } from "lucide-react";
 
 export function Reports() {
+  const { currentUser } = useAuthContext();
   const { pools, loading } = usePools();
   const [reportData, setReportData] = useState([]);
 
@@ -58,7 +61,18 @@ export function Reports() {
     }
   ];
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    await writeAuditLog({
+      actor: currentUser,
+      action: "print",
+      module: "reports",
+      targetType: "report",
+      targetId: "pool_nav_report",
+      targetLabel: "财务报表中心",
+      status: "success",
+      message: `打印/导出财务报表 PDF，资金池 ${reportData.length} 条`,
+      requestPayload: { count: reportData.length }
+    });
     alert("报表数据已同步生成！浏览器打印组件将以 PDF 形式输出账面对账报表。");
     window.print();
   };

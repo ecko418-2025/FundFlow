@@ -261,16 +261,35 @@ export function Investors() {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const dataToExport = investors.map(inv => ({
       ...inv,
       type: inv.type === "individual" ? "个人投资者" : "机构基金/母基金"
     }));
     exportToExcel(dataToExport, EXPORT_HEADERS_MAP, "出资方列表备份");
+    await writeAuditLog({
+      actor: currentUser,
+      action: "export",
+      module: "investors",
+      targetType: "investor",
+      status: "success",
+      message: `导出出资方列表 ${dataToExport.length} 条`,
+      requestPayload: { count: dataToExport.length, fileName: "出资方列表备份" }
+    });
   };
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     downloadTemplate(Object.values(EXPORT_HEADERS_MAP), "出资方导入模板");
+    await writeAuditLog({
+      actor: currentUser,
+      action: "download_template",
+      module: "investors",
+      targetType: "template",
+      targetId: "investors_import",
+      targetLabel: "出资方导入模板",
+      status: "success",
+      message: "下载出资方导入模板"
+    });
   };
 
   const handleImport = async (e) => {

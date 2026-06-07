@@ -10,6 +10,7 @@ import { Badge } from "../../components/ui/Badge";
 import { formatCNY, formatDate } from "../../lib/formatters";
 import { Plus, DollarSign, Download, Upload, FileSpreadsheet, Trash2, Search, Check, XCircle } from "lucide-react";
 import { exportToExcel, importFromExcel, downloadTemplate } from "../../lib/excel";
+import { writeAuditLog } from "../../lib/audit";
 
 const EXPORT_HEADERS_MAP = {
   date: "交易日期",
@@ -257,8 +258,31 @@ export function Transactions() {
     return map[t] || "in";
   };
 
-  const handleDownloadTemplate = () => {
+  const handleExport = async () => {
+    exportToExcel(txs, EXPORT_HEADERS_MAP, "流水备份");
+    await writeAuditLog({
+      actor: currentUser,
+      action: "export",
+      module: "transactions",
+      targetType: "transaction",
+      status: "success",
+      message: `导出资金流水 ${txs.length} 条`,
+      requestPayload: { count: txs.length, fileName: "流水备份" }
+    });
+  };
+
+  const handleDownloadTemplate = async () => {
     downloadTemplate(Object.keys(IMPORT_HEADERS_MAP), "核心流水账本");
+    await writeAuditLog({
+      actor: currentUser,
+      action: "download_template",
+      module: "transactions",
+      targetType: "template",
+      targetId: "transactions_import",
+      targetLabel: "核心流水账本导入模板",
+      status: "success",
+      message: "下载资金流水导入模板"
+    });
   };
 
   const normalizeImportDate = (value) => {
@@ -391,9 +415,32 @@ export function Transactions() {
         successCount++;
       }
 
+      await writeAuditLog({
+        actor: currentUser,
+        action: "import",
+        module: "transactions",
+        targetType: "transaction",
+        status: "success",
+        message: txStatus === "pending"
+          ? `批量提交资金流水 ${successCount} 条（待审核）`
+          : `批量导入资金流水 ${successCount} 条（已生效）`,
+        afterData: { count: successCount, status: txStatus },
+        requestPayload: { count: validatedData.length, status: txStatus }
+      });
+
       await fetchTxs();
       alert(txStatus === "pending" ? `成功提交 ${successCount} 条流水，请等待管理员审核生效。` : `成功导入 ${successCount} 条流水！`);
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "import",
+        module: "transactions",
+        targetType: "transaction",
+        status: "failure",
+        message: "批量导入资金流水失败",
+        requestPayload: { fileName: file?.name || "" },
+        errorMessage: err.message
+      });
       alert("导入失败：" + err.message);
     } finally {
       setLoading(false);
@@ -405,7 +452,6 @@ export function Transactions() {
     e.preventDefault();
 
     let resolvedType, finalPoolId, finalProjectId, finalInvestorId, finalRelatedPoolId;
-    let secondaryTx = null;
 
     const txStatus = currentUser?.role === 'operator' ? 'pending' : 'approved';
 
@@ -416,19 +462,6 @@ export function Transactions() {
       if (sourceEntity.startsWith('pool:')) {
         resolvedType = "capital_call";
         finalInvestorId = sourceEntity.split(':')[1];
-        secondaryTx = {
-          poolId: finalInvestorId,
-          relatedPoolId: finalPoolId,
-          type: "pool_investment",
-          direction: "out",
-          amount: Number(amount),
-          date,
-          description: `注资子池: ${pools.find(p => p.id === finalPoolId)?.name || finalPoolId}`,
-          referenceNo,
-          createdBy: currentUser?.uid || "admin",
-          actor: currentUser,
-          status: txStatus
-        };
       } else if (sourceEntity.startsWith('investor:')) {
         resolvedType = "capital_call";
         finalInvestorId = sourceEntity.split(':')[2];
@@ -489,7 +522,6 @@ export function Transactions() {
         actor: currentUser,
         status: txStatus
       });
-      if (secondaryTx) await createTransaction(secondaryTx);
 
       setSourceEntity(""); setTargetEntity(""); setSearchSource("");
       setIsDropdownOpen(false); setAmount(""); setDescription(""); setReferenceNo("");
@@ -618,7 +650,7 @@ export function Transactions() {
       <div style={styles.pageHeader}><h2>核心资金流水账本</h2></div>
       <div style={styles.actionRow}>
         <div style={styles.leftActions}>
-          <button onClick={() => exportToExcel(txs, EXPORT_HEADERS_MAP, "流水备份")} className="btn-secondary"><Download size={18} /><span>导出</span></button>
+          <button onClick={handleExport} className="btn-secondary"><Download size={18} /><span>导出</span></button>
           <button onClick={handleDownloadTemplate} className="btn-secondary"><FileSpreadsheet size={18} /><span>模板</span></button>
           <label className="btn-secondary" style={{ gap: "6px", cursor: "pointer", marginBottom: 0 }}>
             <Upload size={18} />

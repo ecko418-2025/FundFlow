@@ -8,6 +8,16 @@ export function useDistribution() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const resolveDistributionStatus = (dist) => (
+    dist?.actor?.role === "operator" ? "pending" : "confirmed"
+  );
+
+  const assertAdmin = (actor, actionName) => {
+    if (actor?.role !== "admin") {
+      throw new Error(`${actionName}仅允许管理员操作`);
+    }
+  };
+
   /**
    * 获取某资金池的分配历史
    */
@@ -51,13 +61,14 @@ export function useDistribution() {
     setError(null);
     try {
       const distId = createDistributionStamp();
+      const resolvedStatus = resolveDistributionStatus(dist);
       
       // 1. 插入分配主表
       const sqlInsertDist = `
         INSERT INTO distributions (id, pool_id, project_id, total_amount, distribution_date, description, status, confirmed_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
-      const isConfirmed = dist.status === "confirmed";
+      const isConfirmed = resolvedStatus === "confirmed";
       await querySQL(sqlInsertDist, [
         distId,
         dist.poolId,
@@ -65,7 +76,7 @@ export function useDistribution() {
         dist.totalAmount,
         dist.distributionDate,
         dist.description || "",
-        dist.status, // pending / confirmed / rejected
+        resolvedStatus, // pending / confirmed
         isConfirmed ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null
       ]);
 
@@ -99,12 +110,12 @@ export function useDistribution() {
         targetId: distId,
         targetLabel: dist.description || distId,
         status: "success",
-        message: dist.status === "pending" ? "提交收益分配方案（待审核）" : "创建收益分配方案（已确认）",
-        afterData: { id: distId, stampNo: distId, ...dist, items },
+        message: resolvedStatus === "pending" ? "提交收益分配方案（待审核）" : "创建收益分配方案（已确认）",
+        afterData: { id: distId, stampNo: distId, ...dist, status: resolvedStatus, items },
         requestPayload: dist
       });
 
-      if (dist.status === "pending") notifyPendingApprovalsChanged();
+      if (resolvedStatus === "pending") notifyPendingApprovalsChanged();
       return distId;
     } catch (err) {
       console.error("创建分配失败:", err);
@@ -129,6 +140,7 @@ export function useDistribution() {
     setLoading(true);
     setError(null);
     try {
+      assertAdmin(actor, "审核收益分配");
       const before = await querySQL(`SELECT * FROM distributions WHERE id = ?`, [distId]);
       const dist = before[0] || {};
       await querySQL(
@@ -172,6 +184,7 @@ export function useDistribution() {
     setLoading(true);
     setError(null);
     try {
+      assertAdmin(actor, "驳回收益分配");
       const before = await querySQL(`SELECT * FROM distributions WHERE id = ?`, [distId]);
       const dist = before[0] || {};
       await querySQL(
@@ -215,6 +228,7 @@ export function useDistribution() {
     setLoading(true);
     setError(null);
     try {
+      assertAdmin(actor, "删除收益分配");
       const before = await querySQL(`SELECT * FROM distributions WHERE id = ?`, [distId]);
       const items = await querySQL(`SELECT * FROM distribution_items WHERE distribution_id = ?`, [distId]);
       await querySQL(`DELETE FROM distribution_items WHERE distribution_id = ?`, [distId]);

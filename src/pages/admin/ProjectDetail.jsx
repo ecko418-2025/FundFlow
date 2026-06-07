@@ -9,6 +9,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Modal } from "../../components/ui/Modal";
 import { AmountInput } from "../../components/ui/AmountInput";
 import { formatCNY, formatDate } from "../../lib/formatters";
+import { writeAuditLog } from "../../lib/audit";
 import { 
   ArrowLeft, 
   Briefcase, 
@@ -261,18 +262,44 @@ export function ProjectDetail() {
     }
 
     try {
+      const createdRows = [];
       for (const inv of validInvestors) {
         const newId = `pi-inv-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         await querySQL(
           `INSERT INTO project_investors (id, project_id, investor_id, committed_amount) VALUES (?, ?, ?, ?)`,
           [newId, id, inv.investorId, Number(inv.committedAmount)]
         );
+        createdRows.push({ id: newId, projectId: id, investorId: inv.investorId, committedAmount: Number(inv.committedAmount) });
       }
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "project_investors",
+        targetType: "project_investor",
+        targetId: id,
+        targetLabel: project?.name || id,
+        status: "success",
+        message: `新增项目出资方 ${createdRows.length} 个`,
+        afterData: createdRows,
+        requestPayload: validInvestors
+      });
       setIsAddInvestorOpen(false);
       setNewInvestors(Array.from({ length: 5 }, () => ({ investorId: "", committedAmount: "" })));
       await loadProjectDetails();
       alert("出资方已成功添加到项目！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "create",
+        module: "project_investors",
+        targetType: "project_investor",
+        targetId: id,
+        targetLabel: project?.name || id,
+        status: "failure",
+        message: "新增项目出资方失败",
+        requestPayload: validInvestors,
+        errorMessage: err.message
+      });
       alert("添加失败：" + err.message);
     }
   };
@@ -287,15 +314,44 @@ export function ProjectDetail() {
     e.preventDefault();
     if (!editCommitted || Number(editCommitted) <= 0) { alert("认缴参考额必须大于 0"); return; }
     try {
+      const before = await querySQL(
+        `SELECT * FROM project_investors WHERE project_id = ? AND investor_id = ?`,
+        [id, editingInvestor.investor_id]
+      );
       await querySQL(
         `UPDATE project_investors SET committed_amount = ? WHERE project_id = ? AND investor_id = ?`,
         [Number(editCommitted), id, editingInvestor.investor_id]
       );
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "project_investors",
+        targetType: "project_investor",
+        targetId: before[0]?.id || `${id}:${editingInvestor.investor_id}`,
+        targetLabel: editingInvestor.investor_name || editingInvestor.investor_id,
+        status: "success",
+        message: "更新项目出资方认缴参考额",
+        beforeData: before[0],
+        afterData: { projectId: id, investorId: editingInvestor.investor_id, committedAmount: Number(editCommitted) },
+        requestPayload: { committedAmount: Number(editCommitted) }
+      });
       setIsEditInvestorOpen(false);
       setEditingInvestor(null);
       await loadProjectDetails();
       alert("认缴参考额已更新！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "project_investors",
+        targetType: "project_investor",
+        targetId: editingInvestor?.id || `${id}:${editingInvestor?.investor_id}`,
+        targetLabel: editingInvestor?.investor_name || editingInvestor?.investor_id,
+        status: "failure",
+        message: "更新项目出资方认缴参考额失败",
+        requestPayload: { committedAmount: Number(editCommitted) },
+        errorMessage: err.message
+      });
       alert("更新失败：" + err.message);
     }
   };
@@ -336,6 +392,7 @@ export function ProjectDetail() {
       return;
     }
     try {
+      const before = await querySQL(`SELECT * FROM projects WHERE id = ?`, [project.id]);
       const tagsArray = editProjTags ? editProjTags.split(/[,，]/).map(t => t.trim()).filter(Boolean) : [];
       const sql = `
         UPDATE projects
@@ -355,10 +412,44 @@ export function ProjectDetail() {
         editProjContractNo || "",
         project.id
       ]);
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "projects",
+        targetType: "project",
+        targetId: project.id,
+        targetLabel: editProjName,
+        status: "success",
+        message: "在项目详情页更新项目信息",
+        beforeData: before[0],
+        afterData: {
+          id: project.id,
+          name: editProjName,
+          status: editProjStatus,
+          committedAmount: Number(editProjCommitted),
+          description: editProjDesc,
+          tags: tagsArray,
+          startDate: editProjStartDate || null,
+          expectedEndDate: editProjEndDate || null,
+          contractNo: editProjContractNo || ""
+        }
+      });
       setIsEditProjectOpen(false);
       await loadProjectDetails();
       alert("项目信息已更新！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "update",
+        module: "projects",
+        targetType: "project",
+        targetId: project?.id,
+        targetLabel: editProjName,
+        status: "failure",
+        message: "在项目详情页更新项目信息失败",
+        requestPayload: { name: editProjName, status: editProjStatus, committedAmount: editProjCommitted },
+        errorMessage: err.message
+      });
       alert("更新失败：" + err.message);
     }
   };
@@ -373,13 +464,39 @@ export function ProjectDetail() {
       return;
     }
     try {
+      const before = await querySQL(
+        `SELECT * FROM project_investors WHERE project_id = ? AND investor_id = ?`,
+        [project.id, investor.investor_id]
+      );
       await querySQL(
         `DELETE FROM project_investors WHERE project_id = ? AND investor_id = ?`,
         [project.id, investor.investor_id]
       );
+      await writeAuditLog({
+        actor: currentUser,
+        action: "delete",
+        module: "project_investors",
+        targetType: "project_investor",
+        targetId: before[0]?.id || `${project.id}:${investor.investor_id}`,
+        targetLabel: investor.investor_name || investor.investor_id,
+        status: "success",
+        message: "删除项目出资方",
+        beforeData: before[0]
+      });
       await loadProjectDetails();
       alert("出资人已移除！");
     } catch (err) {
+      await writeAuditLog({
+        actor: currentUser,
+        action: "delete",
+        module: "project_investors",
+        targetType: "project_investor",
+        targetId: `${project?.id}:${investor?.investor_id}`,
+        targetLabel: investor?.investor_name || investor?.investor_id,
+        status: "failure",
+        message: "删除项目出资方失败",
+        errorMessage: err.message
+      });
       alert("移除失败：" + err.message);
     }
   };

@@ -7,6 +7,28 @@ export function useTransactions() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const resolveEntryStatus = (entry) => (
+    entry?.actor?.role === "operator" ? "pending" : "approved"
+  );
+
+  const assertAdmin = (actor, actionName) => {
+    if (actor?.role !== "admin") {
+      throw new Error(`${actionName}仅允许管理员操作`);
+    }
+  };
+
+  const createTxId = () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const entropy = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `TX${dateStr}${entropy}`;
+  };
+
+  const createInternalReferenceNo = () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const entropy = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `PAIR-${dateStr}-${entropy}`;
+  };
+
   /**
    * 获取流水列表（支持过滤）
    */
@@ -47,12 +69,21 @@ export function useTransactions() {
     setLoading(true);
     setError(null);
     try {
-      // 增强型流水 ID
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const entropy = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const txId = `TX${dateStr}${entropy}`;
+      const txId = createTxId();
       
-      const status = tx.status || 'approved'; 
+      const status = resolveEntryStatus(tx); 
+      const isPoolTransferOut = tx.type === "pool_investment" && tx.poolId && tx.relatedPoolId;
+      const isPoolTransferIn = tx.type === "capital_call" && tx.poolId && tx.investorId && tx.investorId !== tx.poolId;
+      let poolSourceExists = [];
+      if (isPoolTransferIn && !tx.skipAutoPair) {
+        poolSourceExists = await querySQL("SELECT id, name FROM pools WHERE id = ?", [tx.investorId], { silent: true });
+      }
+      const shouldAutoCreatePair = !tx.skipAutoPair && (
+        isPoolTransferOut || (isPoolTransferIn && poolSourceExists.length > 0)
+      );
+      const sharedReferenceNo = shouldAutoCreatePair
+        ? (tx.referenceNo || createInternalReferenceNo())
+        : (tx.referenceNo || "");
 
       // 1. 插入流水记录
       const sqlInsert = `
@@ -71,11 +102,68 @@ export function useTransactions() {
         tx.amount,
         tx.date,
         tx.description || "",
-        tx.referenceNo || "",
+        sharedReferenceNo,
         tx.createdBy || "admin",
         status
       ];
       await querySQL(sqlInsert, paramsInsert);
+
+      let pairTxId = null;
+      let pairTxPayload = null;
+      if (shouldAutoCreatePair) {
+        pairTxId = createTxId();
+        if (isPoolTransferOut) {
+          pairTxPayload = {
+            poolId: tx.relatedPoolId,
+            projectId: tx.projectId || null,
+            investorId: tx.poolId,
+            relatedPoolId: null,
+            type: "capital_call",
+            direction: "in",
+            amount: Number(tx.amount),
+            date: tx.date,
+            description: tx.description || `资金池转入: ${tx.poolId}`,
+            referenceNo: sharedReferenceNo,
+            createdBy: tx.createdBy || "admin",
+            actor: tx.actor,
+            status,
+            skipAutoPair: true
+          };
+        } else {
+          pairTxPayload = {
+            poolId: tx.investorId,
+            projectId: tx.projectId || null,
+            investorId: null,
+            relatedPoolId: tx.poolId,
+            type: "pool_investment",
+            direction: "out",
+            amount: Number(tx.amount),
+            date: tx.date,
+            description: tx.description || `注资子池: ${tx.poolId}`,
+            referenceNo: sharedReferenceNo,
+            createdBy: tx.createdBy || "admin",
+            actor: tx.actor,
+            status,
+            skipAutoPair: true
+          };
+        }
+
+        await querySQL(sqlInsert, [
+          pairTxId,
+          pairTxPayload.poolId,
+          pairTxPayload.projectId || null,
+          pairTxPayload.investorId || null,
+          pairTxPayload.relatedPoolId || null,
+          pairTxPayload.type,
+          pairTxPayload.direction,
+          pairTxPayload.amount,
+          pairTxPayload.date,
+          pairTxPayload.description || "",
+          pairTxPayload.referenceNo || "",
+          pairTxPayload.createdBy || "admin",
+          status
+        ]);
+      }
 
       // 如果是待审核状态，不执行任何联动更新逻辑
       if (status === 'pending') {
@@ -88,7 +176,7 @@ export function useTransactions() {
           targetLabel: tx.referenceNo || tx.description || txId,
           status: "success",
           message: "创建资金流水（待审核）",
-          afterData: { id: txId, ...tx, status },
+          afterData: { id: txId, pairedId: pairTxId, ...tx, referenceNo: sharedReferenceNo, status },
           requestPayload: tx
         });
         notifyPendingApprovalsChanged();
@@ -96,7 +184,10 @@ export function useTransactions() {
       }
 
       // 执行余额与名单联动逻辑
-      await runTransactionLinkedUpdates({ ...tx, id: txId });
+      await runTransactionLinkedUpdates({ ...tx, id: txId, referenceNo: sharedReferenceNo });
+      if (pairTxPayload) {
+        await runTransactionLinkedUpdates({ ...pairTxPayload, id: pairTxId });
+      }
 
       await writeAuditLog({
         actor: tx.actor || { uid: tx.createdBy },
@@ -106,8 +197,8 @@ export function useTransactions() {
         targetId: txId,
         targetLabel: tx.referenceNo || tx.description || txId,
         status: "success",
-        message: "创建资金流水（已生效）",
-        afterData: { id: txId, ...tx, status },
+        message: pairTxId ? "创建资金池转款双分录（已生效）" : "创建资金流水（已生效）",
+        afterData: { id: txId, pairedId: pairTxId, ...tx, referenceNo: sharedReferenceNo, status },
         requestPayload: tx
       });
 
@@ -256,6 +347,8 @@ export function useTransactions() {
     let sql = "";
     let params = [];
 
+    const referenceNo = (tx.reference_no || "").trim();
+
     if (tx.type === "pool_investment" && tx.pool_id && tx.related_pool_id) {
       sql = `
         SELECT * FROM transactions
@@ -266,10 +359,12 @@ export function useTransactions() {
           AND amount = ?
           AND DATE(date) = ?
           AND status IN (${statusPlaceholders})
+          ${referenceNo ? "AND reference_no = ?" : ""}
         ORDER BY created_at DESC
         LIMIT 1
       `;
       params = [tx.id, tx.related_pool_id, tx.pool_id, amount, dateText, ...statuses];
+      if (referenceNo) params.push(referenceNo);
     } else if (tx.type === "capital_call" && tx.pool_id && tx.investor_id) {
       const sourcePool = await querySQL("SELECT id FROM pools WHERE id = ?", [tx.investor_id], { silent: true });
       if (!sourcePool || sourcePool.length === 0) return [];
@@ -283,10 +378,12 @@ export function useTransactions() {
           AND amount = ?
           AND DATE(date) = ?
           AND status IN (${statusPlaceholders})
+          ${referenceNo ? "AND reference_no = ?" : ""}
         ORDER BY created_at DESC
         LIMIT 1
       `;
       params = [tx.id, tx.investor_id, tx.pool_id, amount, dateText, ...statuses];
+      if (referenceNo) params.push(referenceNo);
     } else {
       return [];
     }
@@ -298,6 +395,7 @@ export function useTransactions() {
     setLoading(true);
     setError(null);
     try {
+      assertAdmin(actor, "审核流水");
       const results = await querySQL("SELECT * FROM transactions WHERE id = ?", [txId]);
       if (results.length === 0) throw new Error("未找到该流水记录");
       const tx = results[0];
@@ -349,6 +447,7 @@ export function useTransactions() {
     setLoading(true);
     setError(null);
     try {
+      assertAdmin(actor, "驳回流水");
       const results = await querySQL("SELECT * FROM transactions WHERE id = ?", [txId]);
       const tx = results[0] || {};
       const pairedTxs = tx.id ? await getPairedPoolTransferTransactions(tx) : [];
@@ -397,6 +496,8 @@ export function useTransactions() {
       const txs = await querySQL("SELECT * FROM transactions WHERE id = ?", [txId]);
       if (!txs || txs.length === 0) throw new Error("未找到该流水记录");
       const tx = txs[0];
+      const canDelete = actor?.role === "admin" || (tx.status === "pending" && tx.created_by === actor?.uid);
+      if (!canDelete) throw new Error("仅管理员或待审核流水的制单人可以删除该流水");
       const pairedTxs = await getPairedPoolTransferTransactions(tx, ["pending", "approved", "rejected"]);
       const txsToDelete = [tx, ...pairedTxs].filter((item, index, arr) => (
         item && item.id && arr.findIndex(candidate => candidate.id === item.id) === index

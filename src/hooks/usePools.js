@@ -93,47 +93,63 @@ export function usePools() {
    */
   const createPool = async (pool) => {
     const id = pool.id || `POOL-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const sql = `
-      INSERT INTO pools (id, name, description, total_committed, available_balance, type, start_date, end_date, created_by, contract_no)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    const params = [
-      id,
-      pool.name,
-      pool.description || "",
-      pool.totalCommitted || 0,
-      0, // 初始可用余额为 0，后续只由已审核实缴/投放/回款流水重算
-      pool.type || "capital",
-      pool.startDate || null,
-      pool.endDate || null,
-      pool.createdBy || "admin",
-      pool.contractNo || ""
-    ];
-    await querySQL(sql, params);
+    try {
+      const sql = `
+        INSERT INTO pools (id, name, description, total_committed, available_balance, type, start_date, end_date, created_by, contract_no)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      const params = [
+        id,
+        pool.name,
+        pool.description || "",
+        pool.totalCommitted || 0,
+        0, // 初始可用余额为 0，后续只由已审核实缴/投放/回款流水重算
+        pool.type || "capital",
+        pool.startDate || null,
+        pool.endDate || null,
+        pool.createdBy || "admin",
+        pool.contractNo || ""
+      ];
+      await querySQL(sql, params);
 
-    // 同步写入 investors 表镜像行（共享主键，type='pool'）
-    // 使用 INSERT IGNORE 防止重复插入（幂等）
-    await querySQL(
-      `INSERT IGNORE INTO investors (id, name, type, note)
-       VALUES (?, ?, 'pool', ?)`,
-      [id, pool.name, pool.description || ""]
-    );
+      // 同步写入 investors 表镜像行（共享主键，type='pool'）
+      // 使用 INSERT IGNORE 防止重复插入（幂等）
+      await querySQL(
+        `INSERT IGNORE INTO investors (id, name, type, note)
+         VALUES (?, ?, 'pool', ?)`,
+        [id, pool.name, pool.description || ""]
+      );
 
-    await writeAuditLog({
-      actor: pool.actor,
-      action: "create",
-      module: "pools",
-      targetType: "pool",
-      targetId: id,
-      targetLabel: pool.name,
-      status: "success",
-      message: "创建资金池",
-      afterData: { id, ...pool, availableBalance: 0 },
-      requestPayload: pool
-    });
+      await writeAuditLog({
+        actor: pool.actor,
+        action: "create",
+        module: "pools",
+        targetType: "pool",
+        targetId: id,
+        targetLabel: pool.name,
+        status: "success",
+        message: "创建资金池",
+        afterData: { id, ...pool, availableBalance: 0 },
+        requestPayload: pool
+      });
 
-    await fetchPools();
-    return id;
+      await fetchPools();
+      return id;
+    } catch (err) {
+      await writeAuditLog({
+        actor: pool.actor,
+        action: "create",
+        module: "pools",
+        targetType: "pool",
+        targetId: id,
+        targetLabel: pool.name,
+        status: "failure",
+        message: "创建资金池失败",
+        requestPayload: pool,
+        errorMessage: err.message
+      });
+      throw err;
+    }
   };
 
   /**
@@ -154,46 +170,64 @@ export function usePools() {
    * 更新资金池基本信息（不含 available_balance，余额只通过流水变化）
    */
   const updatePool = async (poolId, updates) => {
-    const before = await querySQL("SELECT * FROM pools WHERE id = ?", [poolId]);
-    const sql = `
-      UPDATE pools
-      SET name = ?, description = ?, total_committed = ?, type = ?, start_date = ?, end_date = ?, contract_no = ?, status = ?
-      WHERE id = ?
-    `;
-    const params = [
-      updates.name,
-      updates.description || "",
-      updates.totalCommitted,
-      updates.type,
-      updates.startDate || null,
-      updates.endDate || null,
-      updates.contractNo || "",
-      updates.status || "active",
-      poolId
-    ];
-    await querySQL(sql, params);
+    let before = [];
+    try {
+      before = await querySQL("SELECT * FROM pools WHERE id = ?", [poolId]);
+      const sql = `
+        UPDATE pools
+        SET name = ?, description = ?, total_committed = ?, type = ?, start_date = ?, end_date = ?, contract_no = ?, status = ?
+        WHERE id = ?
+      `;
+      const params = [
+        updates.name,
+        updates.description || "",
+        updates.totalCommitted,
+        updates.type,
+        updates.startDate || null,
+        updates.endDate || null,
+        updates.contractNo || "",
+        updates.status || "active",
+        poolId
+      ];
+      await querySQL(sql, params);
 
-    // 同步更新 investors 镜像行名称（若池子改名则镜像行也跟着改）
-    await querySQL(
-      `UPDATE investors SET name = ?, note = ? WHERE id = ? AND type = 'pool'`,
-      [updates.name, updates.description || "", poolId]
-    );
+      // 同步更新 investors 镜像行名称（若池子改名则镜像行也跟着改）
+      await querySQL(
+        `UPDATE investors SET name = ?, note = ? WHERE id = ? AND type = 'pool'`,
+        [updates.name, updates.description || "", poolId]
+      );
 
-    await writeAuditLog({
-      actor: updates.actor,
-      action: "update",
-      module: "pools",
-      targetType: "pool",
-      targetId: poolId,
-      targetLabel: updates.name,
-      status: "success",
-      message: "更新资金池信息",
-      beforeData: before[0],
-      afterData: { id: poolId, ...updates },
-      requestPayload: updates
-    });
+      await writeAuditLog({
+        actor: updates.actor,
+        action: "update",
+        module: "pools",
+        targetType: "pool",
+        targetId: poolId,
+        targetLabel: updates.name,
+        status: "success",
+        message: "更新资金池信息",
+        beforeData: before[0],
+        afterData: { id: poolId, ...updates },
+        requestPayload: updates
+      });
 
-    await fetchPools();
+      await fetchPools();
+    } catch (err) {
+      await writeAuditLog({
+        actor: updates.actor,
+        action: "update",
+        module: "pools",
+        targetType: "pool",
+        targetId: poolId,
+        targetLabel: updates.name || before[0]?.name || poolId,
+        status: "failure",
+        message: "更新资金池信息失败",
+        beforeData: before[0],
+        requestPayload: updates,
+        errorMessage: err.message
+      });
+      throw err;
+    }
   };
 
   /**
@@ -202,67 +236,118 @@ export function usePools() {
    */
   const addPoolMember = async ({ poolId, investorId, committedAmount, actor }) => {
     const id = `PM-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const sql = `
-      INSERT INTO pool_members (id, pool_id, investor_id, committed_amount, called_amount, share_pct, status)
-      VALUES (?, ?, ?, ?, 0, 0, 'active')
-    `;
-    await querySQL(sql, [id, poolId, investorId, committedAmount]);
-    await writeAuditLog({
-      actor,
-      action: "create",
-      module: "pool_members",
-      targetType: "pool_member",
-      targetId: id,
-      targetLabel: `${poolId} / ${investorId}`,
-      status: "success",
-      message: "新增资金池出资方",
-      afterData: { id, poolId, investorId, committedAmount }
-    });
+    try {
+      const sql = `
+        INSERT INTO pool_members (id, pool_id, investor_id, committed_amount, called_amount, share_pct, status)
+        VALUES (?, ?, ?, ?, 0, 0, 'active')
+      `;
+      await querySQL(sql, [id, poolId, investorId, committedAmount]);
+      await writeAuditLog({
+        actor,
+        action: "create",
+        module: "pool_members",
+        targetType: "pool_member",
+        targetId: id,
+        targetLabel: `${poolId} / ${investorId}`,
+        status: "success",
+        message: "新增资金池出资方",
+        afterData: { id, poolId, investorId, committedAmount }
+      });
+    } catch (err) {
+      await writeAuditLog({
+        actor,
+        action: "create",
+        module: "pool_members",
+        targetType: "pool_member",
+        targetId: id,
+        targetLabel: `${poolId} / ${investorId}`,
+        status: "failure",
+        message: "新增资金池出资方失败",
+        requestPayload: { poolId, investorId, committedAmount },
+        errorMessage: err.message
+      });
+      throw err;
+    }
   };
 
   /**
    * 更新直接出资人的认缴参考金额（持股比例由实缴数据自动计算，不存储）
    */
   const updatePoolMember = async (poolId, investorId, { committedAmount, actor }) => {
-    const before = await querySQL("SELECT * FROM pool_members WHERE pool_id = ? AND investor_id = ?", [poolId, investorId]);
-    const sql = `
-      UPDATE pool_members
-      SET committed_amount = ?
-      WHERE pool_id = ? AND investor_id = ?
-    `;
-    await querySQL(sql, [committedAmount, poolId, investorId]);
-    await writeAuditLog({
-      actor,
-      action: "update",
-      module: "pool_members",
-      targetType: "pool_member",
-      targetId: before[0]?.id || `${poolId}:${investorId}`,
-      targetLabel: `${poolId} / ${investorId}`,
-      status: "success",
-      message: "更新资金池出资方认缴金额",
-      beforeData: before[0],
-      afterData: { poolId, investorId, committedAmount }
-    });
+    let before = [];
+    try {
+      before = await querySQL("SELECT * FROM pool_members WHERE pool_id = ? AND investor_id = ?", [poolId, investorId]);
+      const sql = `
+        UPDATE pool_members
+        SET committed_amount = ?
+        WHERE pool_id = ? AND investor_id = ?
+      `;
+      await querySQL(sql, [committedAmount, poolId, investorId]);
+      await writeAuditLog({
+        actor,
+        action: "update",
+        module: "pool_members",
+        targetType: "pool_member",
+        targetId: before[0]?.id || `${poolId}:${investorId}`,
+        targetLabel: `${poolId} / ${investorId}`,
+        status: "success",
+        message: "更新资金池出资方认缴金额",
+        beforeData: before[0],
+        afterData: { poolId, investorId, committedAmount }
+      });
+    } catch (err) {
+      await writeAuditLog({
+        actor,
+        action: "update",
+        module: "pool_members",
+        targetType: "pool_member",
+        targetId: before[0]?.id || `${poolId}:${investorId}`,
+        targetLabel: `${poolId} / ${investorId}`,
+        status: "failure",
+        message: "更新资金池出资方认缴金额失败",
+        beforeData: before[0],
+        requestPayload: { poolId, investorId, committedAmount },
+        errorMessage: err.message
+      });
+      throw err;
+    }
   };
 
   const removePoolMember = async (poolId, investorId, actor) => {
-    const before = await querySQL("SELECT * FROM pool_members WHERE pool_id = ? AND investor_id = ?", [poolId, investorId]);
-    const sql = `
-      DELETE FROM pool_members
-      WHERE pool_id = ? AND investor_id = ?
-    `;
-    await querySQL(sql, [poolId, investorId]);
-    await writeAuditLog({
-      actor,
-      action: "delete",
-      module: "pool_members",
-      targetType: "pool_member",
-      targetId: before[0]?.id || `${poolId}:${investorId}`,
-      targetLabel: `${poolId} / ${investorId}`,
-      status: "success",
-      message: "删除资金池出资方",
-      beforeData: before[0]
-    });
+    let before = [];
+    try {
+      before = await querySQL("SELECT * FROM pool_members WHERE pool_id = ? AND investor_id = ?", [poolId, investorId]);
+      const sql = `
+        DELETE FROM pool_members
+        WHERE pool_id = ? AND investor_id = ?
+      `;
+      await querySQL(sql, [poolId, investorId]);
+      await writeAuditLog({
+        actor,
+        action: "delete",
+        module: "pool_members",
+        targetType: "pool_member",
+        targetId: before[0]?.id || `${poolId}:${investorId}`,
+        targetLabel: `${poolId} / ${investorId}`,
+        status: "success",
+        message: "删除资金池出资方",
+        beforeData: before[0]
+      });
+    } catch (err) {
+      await writeAuditLog({
+        actor,
+        action: "delete",
+        module: "pool_members",
+        targetType: "pool_member",
+        targetId: before[0]?.id || `${poolId}:${investorId}`,
+        targetLabel: `${poolId} / ${investorId}`,
+        status: "failure",
+        message: "删除资金池出资方失败",
+        beforeData: before[0],
+        errorMessage: err.message
+      });
+      throw err;
+    }
   };
 
   return {

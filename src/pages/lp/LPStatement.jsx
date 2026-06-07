@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { querySQL } from "../../lib/db";
+import { writeAuditLog } from "../../lib/audit";
 import { Badge } from "../../components/ui/Badge";
 import { formatCNY, formatDate } from "../../lib/formatters";
 import { Printer } from "lucide-react";
@@ -135,6 +136,21 @@ export function LPStatement({ user }) {
     return typeMap[type] || type;
   };
 
+  const handlePrint = async () => {
+    await writeAuditLog({
+      actor: user,
+      action: "print",
+      module: "lp_statement",
+      targetType: "statement",
+      targetId: user?.investorId,
+      targetLabel: user?.displayName || user?.email || user?.investorId,
+      status: "success",
+      message: `打印/导出 LP 对账单 ${statement.length} 条`,
+      requestPayload: { investorId: user?.investorId, count: statement.length }
+    });
+    window.print();
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.pageHeader} className="no-print">
@@ -142,7 +158,7 @@ export function LPStatement({ user }) {
           <h2>我名下的资金往来对账单</h2>
           <p style={styles.pageHint}>共 {statement.length} 条已审核流水，按发生日期倒序排列。</p>
         </div>
-        <button onClick={() => window.print()} className="btn-secondary" style={styles.printButton}>
+        <button onClick={handlePrint} className="btn-secondary" style={styles.printButton}>
           <Printer size={18} />
           <span>打印 / 导出 PDF</span>
         </button>

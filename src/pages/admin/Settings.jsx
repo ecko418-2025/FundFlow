@@ -263,7 +263,8 @@ export function Settings() {
     }
   };
 
-  const saveTags = async (tagsData) => {
+  const saveTags = async (tagsData, auditMeta = {}) => {
+    const beforeTags = systemTags;
     try {
       // 核心修复：确保 JSON 字符串被正确转义。
       // CloudBase SQL 驱动通常会处理参数化查询中的字符串转义，
@@ -276,8 +277,34 @@ export function Settings() {
       );
       
       setSystemTags(tagsData);
+      await writeAuditLog({
+        actor: currentUser,
+        action: auditMeta.action || "update",
+        module: "settings",
+        targetType: "setting",
+        targetId: "system_tags",
+        targetLabel: auditMeta.targetLabel || "系统标签配置",
+        status: "success",
+        message: auditMeta.message || "更新系统标签配置",
+        beforeData: beforeTags,
+        afterData: tagsData,
+        requestPayload: auditMeta.requestPayload
+      });
     } catch (err) {
       console.error("Save tags failed:", err);
+      await writeAuditLog({
+        actor: currentUser,
+        action: auditMeta.action || "update",
+        module: "settings",
+        targetType: "setting",
+        targetId: "system_tags",
+        targetLabel: auditMeta.targetLabel || "系统标签配置",
+        status: "failure",
+        message: auditMeta.failureMessage || "更新系统标签配置失败",
+        beforeData: beforeTags,
+        requestPayload: auditMeta.requestPayload,
+        errorMessage: err.message
+      });
       alert("保存失败：" + err.message);
     }
   };
@@ -300,14 +327,26 @@ export function Settings() {
     };
 
     const updated = [...systemTags, newCategory];
-    await saveTags(updated);
+    await saveTags(updated, {
+      action: "create",
+      targetLabel: name,
+      message: "新增系统标签分类",
+      failureMessage: "新增系统标签分类失败",
+      requestPayload: newCategory
+    });
     setNewCategoryName("");
   };
 
   const handleRemoveCategory = async (categoryId, categoryName) => {
     if (window.confirm(`确定要删除分类 "${categoryName}" 吗？其下的所有标签都会从配置中移除（不影响历史项目）。`)) {
       const updated = systemTags.filter(c => c.id !== categoryId);
-      await saveTags(updated);
+      await saveTags(updated, {
+        action: "delete",
+        targetLabel: categoryName,
+        message: "删除系统标签分类",
+        failureMessage: "删除系统标签分类失败",
+        requestPayload: { categoryId, categoryName }
+      });
     }
   };
 
@@ -330,7 +369,14 @@ export function Settings() {
       return c;
     });
 
-    await saveTags(updated);
+    const category = systemTags.find(c => c.id === categoryId);
+    await saveTags(updated, {
+      action: "create",
+      targetLabel: tagVal,
+      message: "新增系统标签",
+      failureMessage: "新增系统标签失败",
+      requestPayload: { categoryId, categoryName: category?.name, tag: tagVal }
+    });
     setNewTagInputs(prev => ({ ...prev, [categoryId]: "" }));
   };
 
@@ -342,7 +388,14 @@ export function Settings() {
         }
         return c;
       });
-      await saveTags(updated);
+      const category = systemTags.find(c => c.id === categoryId);
+      await saveTags(updated, {
+        action: "delete",
+        targetLabel: tagToRemove,
+        message: "删除系统标签",
+        failureMessage: "删除系统标签失败",
+        requestPayload: { categoryId, categoryName: category?.name, tag: tagToRemove }
+      });
     }
   };
 
