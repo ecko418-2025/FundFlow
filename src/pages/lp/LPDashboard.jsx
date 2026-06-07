@@ -4,6 +4,7 @@ import { StatCard } from "../../components/ui/StatCard";
 import { DataTable } from "../../components/ui/DataTable";
 import { Badge } from "../../components/ui/Badge";
 import { formatCNY, formatPercent, formatDate } from "../../lib/formatters";
+import { getDistributionStamp } from "../../lib/distributionStamp";
 import { Wallet, DollarSign, Layers, Briefcase } from "lucide-react";
 
 function toNumber(value) {
@@ -268,6 +269,9 @@ export function LPDashboard({ user }) {
   ];
 
   const incomeHeaders = [
+    { key: "distribution_stamp", label: "分配钢印", render: (_, row) => (
+      <span className="mono" style={styles.stampText}>{getDistributionStamp(row)}</span>
+    ) },
     { key: "distribution_date", label: "分配日期", render: (v) => formatDate(v) },
     { key: "source", label: "分配来源", render: (_, row) => <strong>{row.project_name || row.pool_name || "-"}</strong> },
     { key: "effective_share_pct", label: "分配份额", render: (v) => formatPercent(v) },
@@ -470,6 +474,12 @@ const styles = {
     backgroundColor: "rgba(148, 163, 184, 0.15)",
     color: "var(--text-secondary)",
     fontSize: "0.75rem"
+  },
+  stampText: {
+    color: "var(--accent-blue)",
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    letterSpacing: "0"
   },
   paginationRow: {
     display: "flex",

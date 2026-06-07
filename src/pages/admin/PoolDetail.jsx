@@ -11,6 +11,7 @@ import { Modal } from "../../components/ui/Modal";
 import { AmountInput } from "../../components/ui/AmountInput";
 import { querySQL } from "../../lib/db";
 import { formatCNY, formatPercent, formatDate } from "../../lib/formatters";
+import { getDistributionStamp } from "../../lib/distributionStamp";
 import { 
   ArrowLeft, 
   Layers, 
@@ -436,6 +437,9 @@ export function PoolDetail() {
   ];
 
   const distHeaders = [
+    { key: "distribution_stamp", label: "分配钢印", className: "mono", render: (_, row) => (
+      <span style={styles.stampText}>{getDistributionStamp(row)}</span>
+    ) },
     { key: "distribution_date", label: "分配日期", render: (v) => formatDate(v) },
     { key: "source", label: "分配来源 / 去向", render: (_, row) => {
         if (row.pool_id === id && !row.project_id) return <span>本级发起分配 (去往上级 LPs)</span>;
@@ -713,6 +717,7 @@ const styles = {
   sectionTitle: { fontSize: "1.1rem", fontWeight: "700", borderBottom: "1px solid var(--border)", paddingBottom: "10px" },
   infoRow: { display: "flex", justifyContent: "space-between", fontSize: "0.9rem" },
   infoLabel: { color: "var(--text-secondary)" },
+  stampText: { color: "var(--accent-blue)", fontSize: "0.82rem", fontWeight: 700, letterSpacing: "0" },
   subSubTitle: { fontSize: "0.85rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "8px" },
   emptyText: { fontSize: "0.8rem", color: "var(--text-muted)", fontStyle: "italic" },
   hierarchyLink: { display: "flex", justifyContent: "space-between", padding: "12px", border: "1px solid var(--border)", borderRadius: "8px", cursor: "pointer", marginBottom: "8px" },

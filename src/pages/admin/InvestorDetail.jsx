@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, User, DollarSign, Activity, FileText } from "lucide-react";
 import { querySQL } from "../../lib/db";
 import { formatCNY, formatDate, formatPercent } from "../../lib/formatters";
+import { getDistributionStamp } from "../../lib/distributionStamp";
 import { StatCard } from "../../components/ui/StatCard";
 import { DataTable } from "../../components/ui/DataTable";
 import { Badge } from "../../components/ui/Badge";
@@ -224,6 +225,9 @@ export function InvestorDetail() {
   ];
 
   const distHeaders = [
+    { key: "distribution_stamp", label: "分配钢印", className: "mono", render: (_, row) => (
+      <span style={styles.stampText}>{getDistributionStamp(row)}</span>
+    ) },
     { key: "distribution_date", label: "结算日期", render: (v) => formatDate(v) },
     { key: "source", label: "分配来源", render: (_, di) => {
       const name = di.project_name || di.pool_name || '-';
@@ -485,6 +489,12 @@ const styles = {
   infoValue: {
     fontSize: "15px",
     color: "var(--text)"
+  },
+  stampText: {
+    color: "var(--accent-blue)",
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    letterSpacing: "0"
   },
   paginationRow: {
     display: "flex",

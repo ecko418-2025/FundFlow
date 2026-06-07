@@ -126,7 +126,7 @@ CREATE TABLE `transactions` (
 -- 7. 收益分配方案表
 DROP TABLE IF EXISTS `distributions`;
 CREATE TABLE `distributions` (
-  `id` VARCHAR(36) NOT NULL COMMENT '分配方案ID',
+  `id` VARCHAR(36) NOT NULL COMMENT '分配方案ID/内部流转钢印',
   `pool_id` VARCHAR(36) NULL COMMENT '涉及资金池ID',
   `project_id` VARCHAR(36) NULL COMMENT '关联退出项目ID',
   `total_amount` DECIMAL(18,2) NOT NULL COMMENT '待分配分红总金额',

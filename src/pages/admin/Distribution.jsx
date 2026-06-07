@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuthContext } from "../../context/AuthContext";
 import { usePools } from "../../hooks/usePools";
 import { useProjects } from "../../hooks/useProjects";
@@ -7,7 +7,8 @@ import { useDistribution } from "../../hooks/useDistribution";
 import { AmountInput } from "../../components/ui/AmountInput";
 import { formatCNY, formatPercent, formatDate } from "../../lib/formatters";
 import { exportDistributionReport } from "../../lib/excel";
-import { CheckCircle, PieChart, Info, HelpCircle, FileText, Download, Printer, Trash2, Check, XCircle } from "lucide-react";
+import { getDistributionStamp } from "../../lib/distributionStamp";
+import { CheckCircle, PieChart, Info, HelpCircle, FileText, Download, Printer, Trash2, Check, XCircle, Search } from "lucide-react";
 import { Modal } from "../../components/ui/Modal";
 
 function getTodayDateInputValue() {
@@ -48,6 +49,11 @@ export function Distribution() {
   // 历史分配记录
   const [distHistory, setDistHistory] = useState([]);
   const [distHistoryLoading, setDistHistoryLoading] = useState(false);
+  const [historyKeyword, setHistoryKeyword] = useState("");
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(20);
   
   // 详情 Modal 状态
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -142,9 +148,48 @@ export function Distribution() {
     return map[status] || { text: status || "-", bg: "rgba(148, 163, 184, 0.16)", color: "var(--text-secondary)" };
   };
 
+  const filteredDistHistory = useMemo(() => {
+    const keyword = historyKeyword.trim().toLowerCase();
+    return distHistory.filter(dist => {
+      const dateText = String(dist.distribution_date || "").slice(0, 10);
+      if (historyDateFrom && dateText < historyDateFrom) return false;
+      if (historyDateTo && dateText > historyDateTo) return false;
+
+      if (!keyword) return true;
+      const statusText = getDistStatusMeta(dist.status).text;
+      return [
+        getDistributionStamp(dist),
+        dateText,
+        formatDate(dist.distribution_date),
+        dist.project_name,
+        dist.pool_name,
+        dist.project_id,
+        dist.pool_id,
+        dist.total_amount,
+        statusText,
+        dist.status,
+        dist.description
+      ].some(value => String(value || "").toLowerCase().includes(keyword));
+    });
+  }, [distHistory, historyKeyword, historyDateFrom, historyDateTo]);
+
+  const historyTotalPages = Math.max(1, Math.ceil(filteredDistHistory.length / historyPageSize));
+  const paginatedDistHistory = useMemo(() => {
+    const start = (historyPage - 1) * historyPageSize;
+    return filteredDistHistory.slice(start, start + historyPageSize);
+  }, [filteredDistHistory, historyPage, historyPageSize]);
+
   useEffect(() => {
     loadHistory();
   }, []);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [historyKeyword, historyDateFrom, historyDateTo, historyPageSize]);
+
+  useEffect(() => {
+    if (historyPage > historyTotalPages) setHistoryPage(historyTotalPages);
+  }, [historyPage, historyTotalPages]);
 
 
   // 当参数发生变化时，清空计算结果，要求用户重新点击“计算”
@@ -682,6 +727,51 @@ export function Distribution() {
           <FileText size={18} color="var(--accent-green)" />
           <span>收益历史记录</span>
         </h3>
+
+        {distHistory.length > 0 && (
+          <div style={styles.historyToolbar}>
+            <div style={styles.historySearchBox}>
+              <Search size={16} color="var(--text-secondary)" style={styles.historySearchIcon} />
+              <input
+                type="text"
+                value={historyKeyword}
+                onChange={(e) => setHistoryKeyword(e.target.value)}
+                placeholder="搜索钢印、实体、ID、备注、状态"
+                className="form-input"
+                style={styles.historySearchInput}
+              />
+            </div>
+            <div style={styles.historyDateFilters}>
+              <input
+                type="date"
+                value={historyDateFrom}
+                onChange={(e) => setHistoryDateFrom(e.target.value)}
+                className="form-input mono"
+                style={styles.historyDateInput}
+              />
+              <span style={styles.historyDateSep}>至</span>
+              <input
+                type="date"
+                value={historyDateTo}
+                onChange={(e) => setHistoryDateTo(e.target.value)}
+                className="form-input mono"
+                style={styles.historyDateInput}
+              />
+            </div>
+            <div style={styles.historyPageSizeBox}>
+              <span>每页</span>
+              <select
+                value={historyPageSize}
+                onChange={(e) => setHistoryPageSize(Number(e.target.value))}
+                className="form-input"
+                style={styles.historyPageSizeSelect}
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+          </div>
+        )}
         
         {distHistoryLoading ? (
           <div style={styles.emptyDetail}>加载历史记录中...</div>
@@ -690,11 +780,17 @@ export function Distribution() {
             <Info size={36} color="var(--text-muted)" />
             <p>暂无提交过的分配方案记录</p>
           </div>
+        ) : filteredDistHistory.length === 0 ? (
+          <div style={styles.emptyDetail}>
+            <Info size={36} color="var(--text-muted)" />
+            <p>暂无匹配的收益分配记录</p>
+          </div>
         ) : (
           <div style={styles.tableContainer}>
             <table className="data-table" style={styles.table}>
               <thead>
                 <tr>
+                  <th style={styles.th}>分配钢印</th>
                   <th style={styles.th}>分配日期</th>
                   <th style={styles.th}>目标分配实体</th>
                   <th style={styles.th}>项目 ID</th>
@@ -705,12 +801,15 @@ export function Distribution() {
                 </tr>
               </thead>
               <tbody>
-                {distHistory.map((dist, idx) => (
+                {paginatedDistHistory.map((dist, idx) => (
                   <tr 
-                    key={idx} 
+                    key={dist.id || idx} 
                     style={{ ...styles.tr, cursor: "pointer" }} 
                     onClick={() => handleViewDetails(dist)}
                   >
+                    <td style={styles.td} className="mono">
+                      <span style={styles.stampText}>{getDistributionStamp(dist)}</span>
+                    </td>
                     <td style={styles.td}>{formatDate(dist.distribution_date)}</td>
                     <td style={styles.td}>
                       <span style={{ fontWeight: 600 }}>{dist.project_name || dist.pool_name || '-'}</span>
@@ -761,6 +860,33 @@ export function Distribution() {
                 ))}
               </tbody>
             </table>
+            <div style={styles.historyPagination}>
+              <div style={styles.historyPaginationLeft}>
+                <span>共 {filteredDistHistory.length} 条</span>
+                <span>当前显示 {paginatedDistHistory.length} 条</span>
+              </div>
+              <div style={styles.historyPaginationRight}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={styles.historyPageBtn}
+                  disabled={historyPage === 1}
+                  onClick={() => setHistoryPage(page => Math.max(1, page - 1))}
+                >
+                  上一页
+                </button>
+                <span style={styles.historyPageIndicator}>{historyPage} / {historyTotalPages}</span>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={styles.historyPageBtn}
+                  disabled={historyPage === historyTotalPages}
+                  onClick={() => setHistoryPage(page => Math.min(historyTotalPages, page + 1))}
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -781,6 +907,10 @@ export function Distribution() {
         ) : selectedDistDetail && selectedDistDetail.items && (
           <div>
             <div style={{ display: "flex", gap: "24px", marginBottom: "24px" }}>
+              <div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>分配钢印</div>
+                <div className="mono" style={styles.stampText}>{getDistributionStamp(selectedDistDetail)}</div>
+              </div>
               <div>
                 <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>目标分配实体</div>
                 <div style={{ fontWeight: 600 }}>{selectedDistDetail.project_name || selectedDistDetail.pool_name || '-'}</div>
@@ -881,6 +1011,12 @@ const styles = {
     color: "var(--text-secondary)",
     fontSize: "0.78rem",
     lineHeight: 1.4
+  },
+  stampText: {
+    color: "var(--accent-blue)",
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    letterSpacing: "0"
   },
   actionRow: {
     display: "flex",
@@ -997,6 +1133,96 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: "6px"
+  },
+  historyToolbar: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+    marginBottom: "14px",
+    padding: "12px",
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    backgroundColor: "rgba(9, 13, 26, 0.38)"
+  },
+  historySearchBox: {
+    position: "relative",
+    flex: "1 1 320px",
+    minWidth: "260px",
+    display: "flex",
+    alignItems: "center"
+  },
+  historySearchIcon: {
+    position: "absolute",
+    left: "12px",
+    pointerEvents: "none",
+    zIndex: 1
+  },
+  historySearchInput: {
+    height: "38px",
+    paddingLeft: "34px",
+    fontSize: "0.86rem"
+  },
+  historyDateFilters: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
+  },
+  historyDateInput: {
+    width: "150px",
+    height: "38px",
+    padding: "7px 10px",
+    fontSize: "0.84rem"
+  },
+  historyDateSep: {
+    color: "var(--text-secondary)",
+    fontSize: "0.82rem"
+  },
+  historyPageSizeBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--text-secondary)",
+    fontSize: "0.84rem"
+  },
+  historyPageSizeSelect: {
+    width: "76px",
+    height: "38px",
+    padding: "7px 10px",
+    fontSize: "0.84rem"
+  },
+  historyPagination: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+    paddingTop: "14px",
+    marginTop: "12px",
+    borderTop: "1px solid var(--border)"
+  },
+  historyPaginationLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    color: "var(--text-secondary)",
+    fontSize: "0.84rem"
+  },
+  historyPaginationRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px"
+  },
+  historyPageBtn: {
+    height: "32px",
+    padding: "5px 12px",
+    fontSize: "0.82rem"
+  },
+  historyPageIndicator: {
+    color: "var(--text-primary)",
+    fontSize: "0.84rem",
+    minWidth: "52px",
+    textAlign: "center"
   },
   iconAction: {
     background: "none",

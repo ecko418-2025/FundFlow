@@ -2,6 +2,7 @@ import { useState } from "react";
 import { querySQL } from "../lib/db";
 import { writeAuditLog } from "../lib/audit";
 import { notifyPendingApprovalsChanged } from "../lib/pendingApprovals";
+import { createDistributionStamp } from "../lib/distributionStamp";
 
 export function useDistribution() {
   const [loading, setLoading] = useState(false);
@@ -49,8 +50,7 @@ export function useDistribution() {
     setLoading(true);
     setError(null);
     try {
-      const entropy = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const distId = `DIST-${Date.now()}-${entropy}`;
+      const distId = createDistributionStamp();
       
       // 1. 插入分配主表
       const sqlInsertDist = `
@@ -100,7 +100,7 @@ export function useDistribution() {
         targetLabel: dist.description || distId,
         status: "success",
         message: dist.status === "pending" ? "提交收益分配方案（待审核）" : "创建收益分配方案（已确认）",
-        afterData: { id: distId, ...dist, items },
+        afterData: { id: distId, stampNo: distId, ...dist, items },
         requestPayload: dist
       });
 
