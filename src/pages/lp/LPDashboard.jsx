@@ -452,14 +452,14 @@ const styles = {
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: "var(--border)",
-    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    backgroundColor: "var(--neutral-700)",
     color: "var(--text-secondary)",
     fontSize: "0.86rem",
     fontWeight: 600,
     cursor: "pointer"
   },
   tabButtonActive: {
-    backgroundColor: "rgba(37, 99, 235, 0.18)",
+    backgroundColor: "var(--primary-glow)",
     borderColor: "var(--accent-blue)",
     color: "var(--text-primary)"
   },
@@ -471,7 +471,7 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(148, 163, 184, 0.15)",
+    backgroundColor: "var(--border)",
     color: "var(--text-secondary)",
     fontSize: "0.75rem"
   },

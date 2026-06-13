@@ -321,7 +321,7 @@ const styles = {
     overflowX: "auto",
     border: "1px solid var(--border)",
     borderRadius: "8px",
-    background: "rgba(17, 24, 39, 0.36)"
+    background: "var(--glass-bg)"
   },
   compactTable: {
     width: "100%",
@@ -335,7 +335,7 @@ const styles = {
     fontSize: "0.74rem",
     fontWeight: "700",
     borderBottom: "1px solid var(--border)",
-    backgroundColor: "rgba(9, 13, 26, 0.75)",
+    backgroundColor: "var(--neutral-700)",
     whiteSpace: "nowrap"
   },
   compactTr: {

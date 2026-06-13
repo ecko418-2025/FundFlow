@@ -50,19 +50,19 @@ export function StatCard({ title, value, unit = "", subtext = "", trend = null, 
 
 const styles = {
   card: {
-    background: "rgba(17, 24, 39, 0.6)",
-    backdropFilter: "blur(12px)",
-    border: "1px solid rgba(255, 255, 255, 0.04)",
+    background: "var(--glass-bg)",
+    backdropFilter: "blur(16px)",
+    border: "1px solid var(--glass-border)",
     borderRadius: "12px",
     padding: "20px",
     flex: 1,
     minWidth: "220px",
-    boxShadow: "0 8px 30px rgba(0, 0, 0, 0.3)",
+    boxShadow: "var(--shadow-lg)",
     transition: "all 0.2s ease"
   },
   cardClickable: {
     cursor: "pointer",
-    border: "1px solid rgba(255, 255, 255, 0.10)",
+    border: "1px solid var(--primary-glow)",
   },
   header: {
     display: "flex",

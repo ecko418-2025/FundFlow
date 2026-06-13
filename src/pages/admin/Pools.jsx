@@ -285,7 +285,7 @@ export function Pools() {
       </div>
 
       {/* 搜索与筛选栏 */}
-      <div className="glass-card no-hover" style={{ padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", backgroundColor: "rgba(9, 13, 26, 0.5)", marginBottom: "20px" }}>
+      <div className="glass-card no-hover" style={{ padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
         <div className="search-box" style={{ width: "260px" }}>
           <Search size={16} className="search-icon" />
           <input 

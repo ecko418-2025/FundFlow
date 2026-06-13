@@ -674,7 +674,7 @@ export function Projects() {
         </button>
       </div>
 
-      <div className="glass-card no-hover" style={{ padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap", backgroundColor: "rgba(9, 13, 26, 0.5)" }}>
+      <div className="glass-card no-hover" style={{ padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
         <div className="search-box" style={{ width: "260px" }}>
           <Search size={16} className="search-icon" />
           <input 

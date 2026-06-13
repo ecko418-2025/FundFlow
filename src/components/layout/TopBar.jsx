@@ -23,8 +23,8 @@ export function TopBar({ onToggleMenu, isSidebarCollapsed = false }) {
 const styles = {
   topbar: {
     height: "70px",
-    backgroundColor: "rgba(9, 13, 26, 0.8)",
-    backdropFilter: "blur(8px)",
+    backgroundColor: "var(--glass-bg)",
+    backdropFilter: "blur(12px)",
     borderBottom: "1px solid var(--border)",
     display: "flex",
     alignItems: "center",

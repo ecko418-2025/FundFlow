@@ -33,7 +33,8 @@ export function Sidebar({ user, onLogout, isMobileOpen = false, onNavigate = nul
 
   const lpMenu = [
     { name: "我的资产总览", path: "/lp", icon: LayoutDashboard },
-    { name: "对账账单", path: "/lp/statement", icon: FileText }
+    { name: "对账账单", path: "/lp/statement", icon: FileText },
+    { name: "系统设置", path: "/lp/settings", icon: Settings }
   ];
 
   const operatorMenu = [
@@ -41,7 +42,8 @@ export function Sidebar({ user, onLogout, isMobileOpen = false, onNavigate = nul
     { name: "资金池管理", path: "/admin/pools", icon: Layers },
     { name: "项目管理", path: "/admin/projects", icon: Briefcase },
     { name: "核心流水账", path: "/admin/transactions", icon: DollarSign },
-    { name: "收益分配", path: "/admin/distribution", icon: PieChart }
+    { name: "收益分配", path: "/admin/distribution", icon: PieChart },
+    { name: "系统设置", path: "/admin/settings", icon: Settings }
   ];
 
   const roleLabelMap = {

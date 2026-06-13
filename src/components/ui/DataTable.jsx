@@ -86,7 +86,7 @@ const styles = {
   container: {
     width: "100%",
     overflowX: "auto",
-    background: "rgba(17, 24, 39, 0.4)",
+    background: "var(--glass-bg)",
     borderRadius: "8px",
     border: "1px solid var(--border)"
   },
@@ -101,7 +101,7 @@ const styles = {
     fontSize: "0.8rem",
     fontWeight: "600",
     borderBottom: "1px solid var(--border)",
-    backgroundColor: "rgba(9, 13, 26, 0.5)",
+    backgroundColor: "var(--neutral-700)",
     textTransform: "uppercase",
     letterSpacing: "0.05em"
   },
@@ -121,7 +121,7 @@ const styles = {
     fontSize: "0.85rem"
   },
   summaryTr: {
-    backgroundColor: "rgba(9, 13, 26, 0.7)",
+    backgroundColor: "var(--neutral-700)",
     borderTop: "2px solid var(--border)",
   },
   summaryTd: {

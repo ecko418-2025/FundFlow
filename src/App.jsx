@@ -20,6 +20,7 @@ import { AuditLogs } from "./pages/admin/AuditLogs";
 
 import { LPDashboard } from "./pages/lp/LPDashboard";
 import { LPStatement } from "./pages/lp/LPStatement";
+import { Settings as SettingsLP } from "./pages/lp/Settings";
 
 function AppContent() {
   const { currentUser, loading, logout } = useAuthContext();
@@ -166,9 +167,9 @@ function AppContent() {
         <Route 
           path="/admin/settings" 
           element={
-            <PrivateRoute allowedRole="admin">
+            <PrivateRoute allowedRole={["admin", "operator"]}>
               <AppShell user={currentUser} onLogout={logout}>
-                <Settings />
+                {currentUser?.role === "admin" ? <Settings /> : <SettingsLP />}
               </AppShell>
             </PrivateRoute>
           } 
@@ -202,6 +203,16 @@ function AppContent() {
             <PrivateRoute allowedRole="lp">
               <AppShell user={currentUser} onLogout={logout}>
                 <LPStatement user={currentUser} />
+              </AppShell>
+            </PrivateRoute>
+          } 
+        />
+        <Route 
+          path="/lp/settings" 
+          element={
+            <PrivateRoute allowedRole="lp">
+              <AppShell user={currentUser} onLogout={logout}>
+                <SettingsLP />
               </AppShell>
             </PrivateRoute>
           } 

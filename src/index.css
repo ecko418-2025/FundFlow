@@ -1,34 +1,150 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
 
 :root {
-  --bg-primary: #090D1A;      /* 深邃星空黑 */
-  --bg-secondary: #111827;    /* 卡片暗色背景 */
-  --bg-tertiary: #1F2937;     /* 悬浮行/深色控制件 */
-  
-  --accent-blue: #2563EB;     /* 品牌主色 */
-  --accent-blue-hover: #3B82F6;
-  --accent-blue-glow: rgba(37, 99, 235, 0.15);
-  
-  --accent-gold: #F59E0B;     /* 核心资金/收益金色 */
-  --accent-gold-glow: rgba(245, 158, 11, 0.12);
-  
-  --accent-green: #10B981;    /* 资金流入/实缴 */
-  --accent-green-glow: rgba(16, 185, 129, 0.1);
-  
-  --accent-red: #EF4444;      /* 项目出资/流出 */
-  --accent-red-glow: rgba(239, 68, 68, 0.1);
+  /* ==========================================================================
+     1. 主色 (Primary) - 占比 ~30%
+     金融科技蓝：决定整体界面的专业度和视觉焦点
+     ========================================================================== */
+  --primary-50: #EFF6FF;
+  --primary-400: #60A5FA;      /* 悬浮高亮蓝 */
+  --primary-500: #2563EB;      /* 核心品牌蓝 */
+  --primary-600: #1D4ED8;      /* 点击激活/深蓝 */
+  --primary-glow: rgba(37, 99, 235, 0.15);
+  --primary-glow-hover: rgba(37, 99, 235, 0.25);
 
-  --text-primary: #F3F4F6;    /* 核心文字 */
-  --text-secondary: #9CA3AF;  /* 次要信息 */
-  --text-muted: #4B5563;      /* 禁用/边线文字 */
+  /* ==========================================================================
+     2. 辅助色/强调色 (Accent) - 占比 ~10%
+     活力琥珀金：作为辅助与画龙点睛之笔，用于醒目按钮、重要收益和汇总值
+     ========================================================================== */
+  --accent-gold: #F59E0B;       /* 核心收益/点睛金 */
+  --accent-gold-hover: #D97706; /* 点击激活 */
+  --accent-gold-light: #FBBF24; /* 悬浮高亮 */
+  --accent-gold-glow: rgba(245, 158, 11, 0.12);
+  --accent-purple: #8B5CF6;     /* 自定义扩展紫 */
+
+  /* ==========================================================================
+     3. 中性色盘 (Neutrals) - 占比 ~60%
+     从深邃星空底色到文本，严格划分 8 个层级，建立细腻的暗色深度与视觉层次
+     ========================================================================== */
+  --neutral-950: #060913;      /* 极致暗黑底色 (Body background) */
+  --neutral-900: #090D1A;      /* 主背景 (App layout background) */
+  --neutral-800: #111827;      /* 卡片背景 (Card background) */
+  --neutral-700: #1F2937;      /* 悬浮行/深色控制件 (Hover / Active state) */
+  --neutral-600: #374151;      /* 分割线与弱边框 (Borders / Dividers) */
   
-  --border: #1F2937;
+  --neutral-400: #9CA3AF;      /* 禁用/占位文本色 (Muted text / Placeholder) (7.3:1 对比度) */
+  --neutral-300: #D1D5DB;      /* 次要文字色 (Secondary text / Labels) (12.2:1 对比度) */
+  --neutral-100: #F3F4F6;      /* 核心阅读文字色 (Primary body text) (15.6:1 对比度) */
+  --neutral-50:  #F9FAFB;      /* 极亮标题色 (Titles / Headers) */
+
+  /* 旧命名映射兼容，避免打破现有代码 */
+  --bg-primary: var(--neutral-900);
+  --bg-secondary: var(--neutral-800);
+  --bg-tertiary: var(--neutral-700);
+  --border: var(--neutral-700);
   --border-light: rgba(255, 255, 255, 0.05);
   
-  --glass-bg: rgba(17, 24, 39, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.03);
+  --accent-blue: var(--primary-500);
+  --accent-blue-hover: var(--primary-400);
+  --accent-blue-glow: var(--primary-glow);
   
-  --shadow-lg: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
+  --accent-green: #10B981;
+  --accent-green-glow: rgba(16, 185, 129, 0.1);
+  --accent-red: #EF4444;
+  --accent-red-glow: rgba(239, 68, 68, 0.1);
+  
+  --text-primary: var(--neutral-100);
+  --text-secondary: var(--neutral-300);
+  --text-muted: var(--neutral-400);
+
+  /* ==========================================================================
+     4. 功能色 (Semantic)
+     遵循标准认知，表达操作反馈、资金流向状态
+     ========================================================================== */
+  --semantic-success: #10B981;
+  --semantic-success-glow: rgba(16, 185, 129, 0.12);
+  --semantic-danger: #EF4444;
+  --semantic-danger-glow: rgba(239, 68, 68, 0.12);
+  --semantic-warning: #F59E0B;
+  --semantic-warning-glow: rgba(245, 158, 11, 0.15);
+  --semantic-info: #3B82F6;
+  --semantic-muted: #6B7280;
+  --semantic-muted-glow: rgba(107, 114, 128, 0.15);
+
+  /* ==========================================================================
+     5. 玻璃拟态与混合通道 (Glassmorphism & Transparency)
+     ========================================================================== */
+  --glass-bg: rgba(17, 24, 39, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.03);
+  --glass-border-light: rgba(255, 255, 255, 0.06);
+}
+
+/* ==========================================================================
+   Solarized Light 备用色系方案 (挂载在 HTML/Body 的类)
+   ========================================================================== */
+.theme-solarized-light {
+  /* 1. 主色 (Primary) */
+  --primary-50: #FDF6E3;
+  --primary-400: #268bd2;      /* 悬浮高亮蓝 */
+  --primary-500: #268bd2;      /* Solarized Blue */
+  --primary-600: #1a72b0;      /* 点击激活/深蓝 */
+  --primary-glow: rgba(38, 139, 210, 0.12);
+  --primary-glow-hover: rgba(38, 139, 210, 0.20);
+
+  /* 2. 辅助色/强调色 (Accent) */
+  --accent-gold: #b58900;       /* Solarized Yellow */
+  --accent-gold-hover: #967100; /* 点击激活 */
+  --accent-gold-light: #ca9c00; /* 悬浮高亮 */
+  --accent-gold-glow: rgba(181, 137, 0, 0.12);
+  --accent-purple: #6c71c4;     /* Solarized Violet */
+
+  /* 3. 中性色盘 (Neutrals - 60% 占比) */
+  --neutral-950: #eee8d5;      /* 极致偏深米底 (Base 2) */
+  --neutral-900: #fdf6e3;      /* 主背景 象牙白 (Base 3) */
+  --neutral-800: #fdf6e3;      /* 卡片背景 (保持干净暖米色) */
+  --neutral-700: #eee8d5;      /* 悬浮行/深色控制件 (Base 2) */
+  --neutral-600: #d5ccb2;      /* 细致的纸张分割线/边框 */
+  
+  --neutral-400: #93a1a1;      /* 禁用/占位文本色 (Base 1) */
+  --neutral-300: #586e75;      /* 次要文字色 (Base 01) */
+  --neutral-100: #073642;      /* 核心阅读深蓝黑文字 (Base 02) */
+  --neutral-50:  #002b36;      /* 极深标题色 */
+
+  /* 命名映射兼容 */
+  --bg-primary: var(--neutral-900);
+  --bg-secondary: var(--neutral-800);
+  --bg-tertiary: var(--neutral-700);
+  --border: var(--neutral-600);
+  --border-light: rgba(0, 0, 0, 0.05);
+  
+  --accent-blue: var(--primary-500);
+  --accent-blue-hover: var(--primary-400);
+  --accent-blue-glow: var(--primary-glow);
+  
+  --accent-green: #859900;     /* Solarized Green */
+  --accent-green-glow: rgba(133, 153, 0, 0.12);
+  --accent-red: #dc322f;       /* Solarized Red */
+  --accent-red-glow: rgba(220, 50, 47, 0.1);
+  
+  --text-primary: var(--neutral-100);
+  --text-secondary: var(--neutral-300);
+  --text-muted: var(--neutral-400);
+
+  /* 4. 功能色 (Semantic) */
+  --semantic-success: #859900;
+  --semantic-success-glow: rgba(133, 153, 0, 0.12);
+  --semantic-danger: #dc322f;
+  --semantic-danger-glow: rgba(220, 50, 47, 0.12);
+  --semantic-warning: #cb4b16;  /* Orange */
+  --semantic-warning-glow: rgba(203, 75, 22, 0.12);
+  --semantic-info: #2aa198;     /* Cyan */
+  --semantic-muted: var(--neutral-400);
+
+  /* 5. 玻璃态与阴影 */
+  --glass-bg: rgba(253, 246, 227, 0.88);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-border-light: rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 30px -10px rgba(0, 0, 0, 0.08);
 }
 
 /* 基础重置 */
@@ -67,7 +183,6 @@ body {
 /* 金融等宽数字 */
 .mono {
   font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
-  font-weight: 500;
 }
 
 /* 玻璃卡片 */
@@ -84,8 +199,8 @@ body {
 
 .glass-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.8), 0 0 1px 1px var(--accent-blue-glow);
-  border-color: rgba(37, 99, 235, 0.3);
+  box-shadow: var(--shadow-lg), 0 0 1px 1px var(--accent-blue-glow);
+  border-color: var(--accent-blue-hover);
 }
 
 /* 静态卡片：禁止整体卡片悬浮与发光，专用于包含交互表格的容器 */

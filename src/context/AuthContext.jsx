@@ -131,8 +131,27 @@ export function AuthProvider({ children }) {
     setLoading(false);
   };
 
+  const [theme, setThemeState] = useState(() => {
+    return localStorage.getItem("app_theme") || "dark";
+  });
+
+  useEffect(() => {
+    // 监听 theme 状态变化，同步给 body 的 classList
+    const body = document.body;
+    if (theme === "solarized-light") {
+      body.classList.add("theme-solarized-light");
+    } else {
+      body.classList.remove("theme-solarized-light");
+    }
+  }, [theme]);
+
+  const setTheme = (newTheme) => {
+    localStorage.setItem("app_theme", newTheme);
+    setThemeState(newTheme);
+  };
+
   return (
-    <AuthContext.Provider value={{ currentUser, loading, error, login, logout }}>
+    <AuthContext.Provider value={{ currentUser, loading, error, login, logout, theme, setTheme }}>
       {children}
     </AuthContext.Provider>
   );
