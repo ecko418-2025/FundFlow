@@ -19,6 +19,10 @@ export function InvestorDetail() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
 
+  const [keyword, setKeyword] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   useEffect(() => {
     const loadInvestorDetails = async () => {
       setLoading(true);
@@ -73,6 +77,7 @@ export function InvestorDetail() {
           LEFT JOIN projects pr ON t.project_id = pr.id
           LEFT JOIN investors i ON t.investor_id = i.id
           WHERE t.investor_id = ? 
+            AND t.status = 'approved'
           ORDER BY t.date DESC, t.created_at DESC
         `, [id]);
         setTransactions(txResult);
@@ -103,11 +108,72 @@ export function InvestorDetail() {
   const [txCurrentPage, setTxCurrentPage] = useState(1);
   const [txPageSize, setTxPageSize] = useState(10);
 
-  const paginatedTxs = React.useMemo(() => {
-    return transactions.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
-  }, [transactions, txCurrentPage, txPageSize]);
+  useEffect(() => {
+    setTxCurrentPage(1);
+  }, [keyword, startDate, endDate, activeTab]);
 
-  const txTotalPages = Math.ceil(transactions.length / txPageSize);
+  const filteredPools = React.useMemo(() => {
+    return poolMembers.filter(row => {
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const pName = (row.pool_name || "").toLowerCase();
+        const status = (row.status || "").toLowerCase();
+        return pName.includes(kw) || status.includes(kw);
+      }
+      return true;
+    });
+  }, [poolMembers, keyword]);
+
+  const filteredProjects = React.useMemo(() => {
+    return projectInvestments.filter(row => {
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const pName = (row.project_name || "").toLowerCase();
+        const status = (row.status || "").toLowerCase();
+        return pName.includes(kw) || status.includes(kw);
+      }
+      return true;
+    });
+  }, [projectInvestments, keyword]);
+
+  const filteredTxs = React.useMemo(() => {
+    return transactions.filter(row => {
+      if (startDate && row.date < startDate) return false;
+      if (endDate && row.date > endDate) return false;
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const desc = (row.description || "").toLowerCase();
+        const refNo = (row.reference_no || "").toLowerCase();
+        const id = String(row.id || "").toLowerCase();
+        const source = (getSourceName(row) || "").toLowerCase();
+        const target = (getTargetName(row) || "").toLowerCase();
+        return desc.includes(kw) || refNo.includes(kw) || id.includes(kw) || source.includes(kw) || target.includes(kw);
+      }
+      return true;
+    });
+  }, [transactions, keyword, startDate, endDate]);
+
+  const filteredDists = React.useMemo(() => {
+    return distributions.filter(row => {
+      if (startDate && row.distribution_date && row.distribution_date.slice(0, 10) < startDate) return false;
+      if (endDate && row.distribution_date && row.distribution_date.slice(0, 10) > endDate) return false;
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const stamp = getDistributionStamp(row).toLowerCase();
+        const pName = (row.project_name || "").toLowerCase();
+        const poolName = (row.pool_name || "").toLowerCase();
+        const desc = (row.description || "").toLowerCase();
+        return stamp.includes(kw) || pName.includes(kw) || poolName.includes(kw) || desc.includes(kw);
+      }
+      return true;
+    });
+  }, [distributions, keyword, startDate, endDate]);
+
+  const paginatedTxs = React.useMemo(() => {
+    return filteredTxs.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
+  }, [filteredTxs, txCurrentPage, txPageSize]);
+
+  const txTotalPages = Math.ceil(filteredTxs.length / txPageSize);
 
   if (loading) return <div style={{ padding: 20 }}>正在加载出资方台账...</div>;
   if (error) return <div style={{ padding: 20, color: "var(--accent-red)" }}>{error}</div>;
@@ -133,7 +199,7 @@ export function InvestorDetail() {
 
   const getSourceName = (row) => {
     if (row.type === "capital_call") return row.investor_name || "";
-    if (row.type === "investment") return row.pool_name || "";
+    if (row.type === "investment") return row.investor_name || row.pool_name || "";
     if (row.type === "pool_investment") return row.pool_name || "";
     if (row.type === "pool_transfer_out") return row.pool_name || "";
     if (row.type === "pool_transfer_in") return row.related_pool_name || "";
@@ -267,21 +333,21 @@ export function InvestorDetail() {
           title="认缴总额 (Committed)" 
           value={formatCNY(totalCommitted, false)} 
           icon={User} 
-          trend="包含大池及项目直投"
+          subtext="包含大池及项目直投"
           color="var(--accent-blue)"
         />
         <StatCard 
           title="实缴总额 (Called/Invested)" 
           value={formatCNY(totalInvested, false)} 
           icon={DollarSign} 
-          trend={`已实缴占比 ${((totalInvested/totalCommitted)*100).toFixed(1)}%`}
+          subtext={`已实缴占比 ${totalCommitted > 0 ? ((totalInvested/totalCommitted)*100).toFixed(1) : '0.0'}%`}
           color="var(--accent-gold)"
         />
         <StatCard 
           title="累计获得退款/分红" 
           value={formatCNY(totalReturned, false)} 
           icon={Activity} 
-          trend="从系统流出的本息收益"
+          subtext="从系统流出的本息收益"
           color="var(--accent-green)"
         />
       </div>
@@ -321,6 +387,56 @@ export function InvestorDetail() {
         </div>
 
         <div style={styles.tabContent}>
+          {activeTab !== "overview" && (
+            <div style={styles.filterBar} className="glass-card">
+              <div style={styles.filterGroup}>
+                <label style={styles.filterLabel}>关键词：</label>
+                <input 
+                  type="text"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  placeholder=""
+                  className="form-input"
+                  style={styles.filterInput}
+                />
+              </div>
+              <div style={styles.filterGroup}>
+                <label style={styles.filterLabel}>日期范围：</label>
+                <div style={styles.dateRangeWrap}>
+                  <input 
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="form-input"
+                    style={styles.dateInput}
+                  />
+                  <span style={styles.dateSeparator}>至</span>
+                  <input 
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="form-input"
+                    style={styles.dateInput}
+                  />
+                </div>
+              </div>
+              {(keyword || startDate || endDate) && (
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setKeyword("");
+                    setStartDate("");
+                    setEndDate("");
+                  }}
+                  className="btn-secondary"
+                  style={styles.clearBtn}
+                >
+                  重置
+                </button>
+              )}
+            </div>
+          )}
+
           {activeTab === "overview" && (
             <div style={styles.infoGrid}>
               <div style={styles.infoItem}>
@@ -351,11 +467,11 @@ export function InvestorDetail() {
           )}
 
           {activeTab === "pools" && (
-            <DataTable headers={poolHeaders} data={poolMembers} emptyMessage="该出资方暂未参与任何资金池" />
+            <DataTable headers={poolHeaders} data={filteredPools} emptyMessage="该出资方暂未参与任何资金池" />
           )}
 
           {activeTab === "projects" && (
-            <DataTable headers={projectHeaders} data={projectInvestments} emptyMessage="该出资方暂无直投项目记录" />
+            <DataTable headers={projectHeaders} data={filteredProjects} emptyMessage="该出资方暂无直投项目记录" />
           )}
 
           {activeTab === "transactions" && (
@@ -381,7 +497,7 @@ export function InvestorDetail() {
                     <option value={50}>50 条</option>
                   </select>
                   <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
-                    共 {transactions.length} 条记录
+                    共 {filteredTxs.length} 条记录
                   </span>
                 </div>
                 
@@ -413,7 +529,7 @@ export function InvestorDetail() {
           )}
 
           {activeTab === "distributions" && (
-            <DataTable headers={distHeaders} data={distributions} emptyMessage="该出资方暂无收益结算记录" />
+            <DataTable headers={distHeaders} data={filteredDists} emptyMessage="该出资方暂无收益结算记录" />
           )}
         </div>
       </div>
@@ -539,6 +655,61 @@ const styles = {
     color: "var(--text-primary)",
     fontSize: "0.85rem",
     fontWeight: "500"
+  },
+  filterBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "18px",
+    padding: "12px 14px",
+    backgroundColor: "var(--bg-primary)",
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    marginBottom: "16px"
+  },
+  filterGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
+  },
+  filterLabel: {
+    fontSize: "0.85rem",
+    fontWeight: "500",
+    color: "var(--text-secondary)",
+    whiteSpace: "nowrap"
+  },
+  filterInput: {
+    width: "250px",
+    height: "36px",
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateRangeWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  },
+  dateInput: {
+    width: "140px",
+    height: "36px",
+    padding: "6px 10px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateSeparator: {
+    fontSize: "0.85rem",
+    color: "var(--text-secondary)"
+  },
+  clearBtn: {
+    padding: "0 14px",
+    height: "36px",
+    fontSize: "0.85rem",
+    marginLeft: "auto"
   }
 };
 export default InvestorDetail;

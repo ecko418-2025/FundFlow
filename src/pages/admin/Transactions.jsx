@@ -586,6 +586,7 @@ export function Transactions() {
     if (searchKeyword) {
       const kw = searchKeyword.toLowerCase();
       result = result.filter(t => 
+        (t.id && t.id.toLowerCase().includes(kw)) ||
         (t.reference_no && t.reference_no.toLowerCase().includes(kw)) ||
         (t.description && t.description.toLowerCase().includes(kw)) ||
         (getSourceName(t).toLowerCase().includes(kw)) ||

@@ -43,6 +43,10 @@ export function ProjectDetail() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
 
+  const [keyword, setKeyword] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   // 编辑项目相关状态
   const [systemTags, setSystemTags] = useState([]);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
@@ -103,7 +107,7 @@ export function ProjectDetail() {
          LEFT JOIN pools rp ON t.related_pool_id = rp.id
          LEFT JOIN projects pr ON t.project_id = pr.id
          LEFT JOIN investors i ON t.investor_id = i.id
-         WHERE t.project_id = ?
+         WHERE t.project_id = ? AND t.status <> 'rejected'
          ORDER BY t.date DESC, t.created_at DESC`,
         [id]
       );
@@ -501,26 +505,6 @@ export function ProjectDetail() {
     }
   };
 
-  const [txCurrentPage, setTxCurrentPage] = useState(1);
-  const [txPageSize, setTxPageSize] = useState(10);
-
-  const paginatedTxs = React.useMemo(() => {
-    return txs.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
-  }, [txs, txCurrentPage, txPageSize]);
-
-  const txTotalPages = Math.ceil(txs.length / txPageSize);
-
-  if (loading) return <div style={styles.loading}>加载中...</div>;
-  if (error) return <div style={styles.error}><Info color="red" /> {error}</div>;
-  if (!project) return null;
-
-  const isExpired = project.expected_end_date && new Date(project.expected_end_date) < new Date();
-  const netInvested = project.invested_amount - project.returned_amount;
-  const remainingCommitted = Math.max(0, project.committed_amount - project.invested_amount);
-
-  // 全项目已到账总额（用于动态持股比例计算）
-  const totalProjectInvested = projectInvestors.reduce((s, pi) => s + Number(pi.invested_amount || 0), 0);
-
   const getSourceName = (row) => {
     if (row.type === "capital_call") return row.investor_name || "";
     if (row.type === "investment") return row.investor_name || row.pool_name || "";
@@ -541,6 +525,59 @@ export function ProjectDetail() {
     if (row.type === "distribution") return row.investor_name || row.pool_name || "";
     return row.direction === "in" ? (row.pool_name || "") : "外部去向";
   };
+
+  const [txCurrentPage, setTxCurrentPage] = useState(1);
+  const [txPageSize, setTxPageSize] = useState(10);
+
+  useEffect(() => {
+    setTxCurrentPage(1);
+  }, [keyword, startDate, endDate, activeTab]);
+
+  const filteredInvestors = React.useMemo(() => {
+    return projectInvestors.filter(row => {
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const name = (row.investor_name || "").toLowerCase();
+        const type = (row.investor_type || "").toLowerCase();
+        return name.includes(kw) || type.includes(kw);
+      }
+      return true;
+    });
+  }, [projectInvestors, keyword]);
+
+  const filteredTxs = React.useMemo(() => {
+    return txs.filter(row => {
+      if (startDate && row.date < startDate) return false;
+      if (endDate && row.date > endDate) return false;
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const desc = (row.description || "").toLowerCase();
+        const refNo = (row.reference_no || "").toLowerCase();
+        const id = String(row.id || "").toLowerCase();
+        const source = (getSourceName(row) || "").toLowerCase();
+        const target = (getTargetName(row) || "").toLowerCase();
+        return desc.includes(kw) || refNo.includes(kw) || id.includes(kw) || source.includes(kw) || target.includes(kw);
+      }
+      return true;
+    });
+  }, [txs, keyword, startDate, endDate]);
+
+  const paginatedTxs = React.useMemo(() => {
+    return filteredTxs.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
+  }, [filteredTxs, txCurrentPage, txPageSize]);
+
+  const txTotalPages = Math.ceil(filteredTxs.length / txPageSize);
+
+  if (loading) return <div style={styles.loading}>加载中...</div>;
+  if (error) return <div style={styles.error}><Info color="red" /> {error}</div>;
+  if (!project) return null;
+
+  const isExpired = project.expected_end_date && new Date(project.expected_end_date) < new Date();
+  const netInvested = project.invested_amount - project.returned_amount;
+  const remainingCommitted = Math.max(0, project.committed_amount - project.invested_amount);
+
+  // 全项目已到账总额（用于动态持股比例计算）
+  const totalProjectInvested = projectInvestors.reduce((s, pi) => s + Number(pi.invested_amount || 0), 0);
 
   const txHeaders = [
     { key: "id", label: "流水编号", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>{v}</span> },
@@ -793,6 +830,56 @@ export function ProjectDetail() {
 
       {/* Tab 内容区 */}
       <div style={styles.tabContent}>
+        {activeTab !== "overview" && (
+          <div style={styles.filterBar} className="glass-card">
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>关键词：</label>
+              <input 
+                type="text"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder=""
+                className="form-input"
+                style={styles.filterInput}
+              />
+            </div>
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>日期范围：</label>
+              <div style={styles.dateRangeWrap}>
+                <input 
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="form-input"
+                  style={styles.dateInput}
+                />
+                <span style={styles.dateSeparator}>至</span>
+                <input 
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="form-input"
+                  style={styles.dateInput}
+                />
+              </div>
+            </div>
+            {(keyword || startDate || endDate) && (
+              <button 
+                type="button" 
+                onClick={() => {
+                  setKeyword("");
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="btn-secondary"
+                style={styles.clearBtn}
+              >
+                重置
+              </button>
+            )}
+          </div>
+        )}
+
         {activeTab === "overview" && (
           <div style={styles.overviewGrid}>
             {/* 项目基本概况 */}
@@ -880,7 +967,7 @@ export function ProjectDetail() {
 
             <DataTable 
               headers={investorHeaders} 
-              data={projectInvestors} 
+              data={filteredInvestors} 
               emptyMessage="当前项目暂无出资人记录，请点击右上角添加" 
               onRowClick={(row) => {
                 if (row.investor_type === 'pool') {
@@ -917,7 +1004,7 @@ export function ProjectDetail() {
                   <option value={50}>50 条</option>
                 </select>
                 <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
-                  共 {txs.length} 条记录
+                  共 {filteredTxs.length} 条记录
                 </span>
               </div>
               
@@ -1608,6 +1695,61 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "10px"
+  },
+  filterBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "18px",
+    padding: "12px 14px",
+    backgroundColor: "var(--bg-primary)",
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    marginBottom: "16px"
+  },
+  filterGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
+  },
+  filterLabel: {
+    fontSize: "0.85rem",
+    fontWeight: "500",
+    color: "var(--text-secondary)",
+    whiteSpace: "nowrap"
+  },
+  filterInput: {
+    width: "250px",
+    height: "36px",
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateRangeWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  },
+  dateInput: {
+    width: "140px",
+    height: "36px",
+    padding: "6px 10px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateSeparator: {
+    fontSize: "0.85rem",
+    color: "var(--text-secondary)"
+  },
+  clearBtn: {
+    padding: "0 14px",
+    height: "36px",
+    fontSize: "0.85rem",
+    marginLeft: "auto"
   }
 };
 export default ProjectDetail;

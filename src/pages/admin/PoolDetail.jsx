@@ -70,6 +70,10 @@ export function PoolDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [keyword, setKeyword] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   const getAmountDistributedToPool = async (currentPoolId, dist) => {
     // 1. 如果是本级发起的分配，归零（显示本级发起分配，去往 LPs）
     if (dist.pool_id === currentPoolId && !dist.project_id) {
@@ -117,7 +121,7 @@ export function PoolDetail() {
     try {
       const poolDetail = await getPoolDetail(id);
       setDetail(poolDetail);
-      const txList = await getTransactions({ poolId: id });
+      const txList = await getTransactions({ poolId: id, status: 'approved' });
       setTxs(txList);
       
       const distList = await getDistributions(id);
@@ -284,11 +288,97 @@ export function PoolDetail() {
   const [txCurrentPage, setTxCurrentPage] = useState(1);
   const [txPageSize, setTxPageSize] = useState(10);
 
-  const paginatedTxs = React.useMemo(() => {
-    return txs.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
-  }, [txs, txCurrentPage, txPageSize]);
+  useEffect(() => {
+    setTxCurrentPage(1);
+  }, [keyword, startDate, endDate, activeTab]);
 
-  const txTotalPages = Math.ceil(txs.length / txPageSize);
+  const filteredMembers = React.useMemo(() => {
+    const membersList = detail?.members || [];
+    return membersList.filter(row => {
+      if (startDate && row.joined_at && row.joined_at.slice(0, 10) < startDate) return false;
+      if (endDate && row.joined_at && row.joined_at.slice(0, 10) > endDate) return false;
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const name = (row.investor_name || "").toLowerCase();
+        const type = (row.investor_type || "").toLowerCase();
+        return name.includes(kw) || type.includes(kw);
+      }
+      return true;
+    });
+  }, [detail?.members, keyword, startDate, endDate]);
+
+  const filteredProjects = React.useMemo(() => {
+    const projectsList = detail?.projects || [];
+    return projectsList.filter(row => {
+      if (startDate && row.start_date && row.start_date.slice(0, 10) < startDate) return false;
+      if (endDate && row.start_date && row.start_date.slice(0, 10) > endDate) return false;
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const name = (row.name || "").toLowerCase();
+        const code = (row.code || "").toLowerCase();
+        return name.includes(kw) || code.includes(kw);
+      }
+      return true;
+    });
+  }, [detail?.projects, keyword, startDate, endDate]);
+
+  const filteredTxs = React.useMemo(() => {
+    return txs.filter(row => {
+      if (startDate && row.date < startDate) return false;
+      if (endDate && row.date > endDate) return false;
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        let sourceName = "未知";
+        if (row.type === "capital_call") sourceName = row.investor_name;
+        else if (row.type === "investment") sourceName = row.investor_name || row.pool_name;
+        else if (row.type === "pool_investment") sourceName = row.pool_name;
+        else if (row.type === "pool_transfer_out") sourceName = row.pool_name;
+        else if (row.type === "pool_transfer_in") sourceName = row.related_pool_name;
+        else if (row.type === "return" || row.type === "distribution") sourceName = row.project_name;
+        else sourceName = row.direction === "in" ? "外部来源" : (row.pool_name || "未知");
+
+        let targetName = "未知";
+        if (row.type === "capital_call") targetName = row.pool_name;
+        else if (row.type === "investment") targetName = row.project_name;
+        else if (row.type === "pool_investment") targetName = row.related_pool_name;
+        else if (row.type === "pool_transfer_in") targetName = row.pool_name;
+        else if (row.type === "pool_transfer_out") targetName = row.related_pool_name;
+        else if (row.type === "return") targetName = row.investor_name || row.pool_name;
+        else if (row.type === "distribution") targetName = row.investor_name || row.pool_name;
+        else targetName = row.direction === "in" ? (row.pool_name || "未知") : "外部去向";
+
+        const desc = (row.description || "").toLowerCase();
+        const refNo = (row.reference_no || "").toLowerCase();
+        const id = String(row.id || "").toLowerCase();
+        const src = (sourceName || "").toLowerCase();
+        const tgt = (targetName || "").toLowerCase();
+        return desc.includes(kw) || refNo.includes(kw) || id.includes(kw) || src.includes(kw) || tgt.includes(kw);
+      }
+      return true;
+    });
+  }, [txs, keyword, startDate, endDate]);
+
+  const filteredDists = React.useMemo(() => {
+    return dists.filter(row => {
+      if (startDate && row.distribution_date && row.distribution_date.slice(0, 10) < startDate) return false;
+      if (endDate && row.distribution_date && row.distribution_date.slice(0, 10) > endDate) return false;
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const stamp = getDistributionStamp(row).toLowerCase();
+        const pName = (row.project_name || "").toLowerCase();
+        const poolName = (row.pool_name || "").toLowerCase();
+        const desc = (row.description || "").toLowerCase();
+        return stamp.includes(kw) || pName.includes(kw) || poolName.includes(kw) || desc.includes(kw);
+      }
+      return true;
+    });
+  }, [dists, keyword, startDate, endDate]);
+
+  const paginatedTxs = React.useMemo(() => {
+    return filteredTxs.slice((txCurrentPage - 1) * txPageSize, txCurrentPage * txPageSize);
+  }, [filteredTxs, txCurrentPage, txPageSize]);
+
+  const txTotalPages = Math.ceil(filteredTxs.length / txPageSize);
 
   if (loading) return <div style={styles.loading}>数据深度加载中...</div>;
   if (error) return <div style={styles.error}><Info color="red" /> {error}</div>;
@@ -496,6 +586,56 @@ export function PoolDetail() {
       </div>
 
       <div style={styles.tabContent}>
+        {activeTab !== "overview" && (
+          <div style={styles.filterBar} className="glass-card">
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>关键词：</label>
+              <input 
+                type="text"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder=""
+                className="form-input"
+                style={styles.filterInput}
+              />
+            </div>
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>日期范围：</label>
+              <div style={styles.dateRangeWrap}>
+                <input 
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="form-input"
+                  style={styles.dateInput}
+                />
+                <span style={styles.dateSeparator}>至</span>
+                <input 
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="form-input"
+                  style={styles.dateInput}
+                />
+              </div>
+            </div>
+            {(keyword || startDate || endDate) && (
+              <button 
+                type="button" 
+                onClick={() => {
+                  setKeyword("");
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="btn-secondary"
+                style={styles.clearBtn}
+              >
+                重置
+              </button>
+            )}
+          </div>
+        )}
+
         {activeTab === "overview" && (
           <div style={styles.overviewGrid}>
             <div className="glass-card" style={styles.infoCard}>
@@ -543,11 +683,11 @@ export function PoolDetail() {
               <div><div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginBottom: "4px" }}>认缴登记总额目标</div><div className="mono" style={{ fontWeight: 700, fontSize: "1.2rem" }}>{formatCNY(members.reduce((sum, m) => sum + Number(m.committed_amount || 0), 0), false)}</div></div>
             </div>
 
-            <DataTable headers={memberHeaders} data={members} emptyMessage="暂无登记记录" onRowClick={(row) => row.investor_type === 'pool' && navigate(`/admin/pools/${row.investor_id}`)} />
+            <DataTable headers={memberHeaders} data={filteredMembers} emptyMessage="暂无登记记录" onRowClick={(row) => row.investor_type === 'pool' && navigate(`/admin/pools/${row.investor_id}`)} />
           </div>
         )}
 
-        {activeTab === "projects" && <div className="glass-card no-hover"><DataTable headers={projectHeaders} data={projects} emptyMessage="暂无投向项目" /></div>}
+        {activeTab === "projects" && <div className="glass-card no-hover"><DataTable headers={projectHeaders} data={filteredProjects} emptyMessage="暂无投向项目" /></div>}
         {activeTab === "ledger" && (
           <div className="glass-card no-hover" style={{ padding: "20px" }}>
             <DataTable headers={txHeaders} data={paginatedTxs} emptyMessage="暂无流水记录" />
@@ -571,7 +711,7 @@ export function PoolDetail() {
                   <option value={50}>50 条</option>
                 </select>
                 <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
-                  共 {txs.length} 条记录
+                  共 {filteredTxs.length} 条记录
                 </span>
               </div>
               
@@ -601,7 +741,7 @@ export function PoolDetail() {
             </div>
           </div>
         )}
-        {activeTab === "dists" && <div className="glass-card no-hover"><DataTable headers={distHeaders} data={dists} emptyMessage="暂无分配记录" onRowClick={handleViewDetails} /></div>}
+        {activeTab === "dists" && <div className="glass-card no-hover"><DataTable headers={distHeaders} data={filteredDists} emptyMessage="暂无分配记录" onRowClick={handleViewDetails} /></div>}
       </div>
 
       {/* 弹窗：批量添加 */}
@@ -766,6 +906,61 @@ const styles = {
     fontWeight: "500"
   },
   loading: { padding: "100px", textAlign: "center" },
-  error: { padding: "20px", color: "var(--accent-red)" }
+  error: { padding: "20px", color: "var(--accent-red)" },
+  filterBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "18px",
+    padding: "12px 14px",
+    backgroundColor: "var(--bg-primary)",
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    marginBottom: "16px"
+  },
+  filterGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
+  },
+  filterLabel: {
+    fontSize: "0.85rem",
+    fontWeight: "500",
+    color: "var(--text-secondary)",
+    whiteSpace: "nowrap"
+  },
+  filterInput: {
+    width: "250px",
+    height: "36px",
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateRangeWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  },
+  dateInput: {
+    width: "140px",
+    height: "36px",
+    padding: "6px 10px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateSeparator: {
+    fontSize: "0.85rem",
+    color: "var(--text-secondary)"
+  },
+  clearBtn: {
+    padding: "0 14px",
+    height: "36px",
+    fontSize: "0.85rem",
+    marginLeft: "auto"
+  }
 };
 export default PoolDetail;

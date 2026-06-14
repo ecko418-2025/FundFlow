@@ -11,6 +11,15 @@ export function LPStatement({ user }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
+  const [keyword, setKeyword] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Reset pagination when search parameters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [keyword, startDate, endDate]);
+
   useEffect(() => {
     async function loadStatement() {
       if (!user?.investorId) return;
@@ -40,13 +49,6 @@ export function LPStatement({ user }) {
     loadStatement();
   }, [user]);
 
-  const paginatedStatement = React.useMemo(() => {
-    return statement.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  }, [statement, currentPage, pageSize]);
-
-  const totalPages = Math.max(1, Math.ceil(statement.length / pageSize));
-  const generatedAt = new Date().toLocaleString("zh-CN", { hour12: false });
-
   const getSourceName = (row) => {
     if (row.type === "capital_call") return row.investor_name || "";
     if (row.type === "investment") return row.investor_name || row.pool_name || "";
@@ -67,6 +69,39 @@ export function LPStatement({ user }) {
     if (row.type === "distribution") return row.investor_name || row.pool_name || "";
     return row.direction === "in" ? (row.pool_name || "") : "外部去向";
   };
+
+  const filteredStatement = React.useMemo(() => {
+    return statement.filter(row => {
+      // 1. Date Filter
+      if (startDate && row.date < startDate) return false;
+      if (endDate && row.date > endDate) return false;
+
+      // 2. Keyword Filter
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        const desc = (row.description || "").toLowerCase();
+        const refNo = (row.reference_no || "").toLowerCase();
+        const id = String(row.id || "").toLowerCase();
+        const source = (getSourceName(row) || "").toLowerCase();
+        const target = (getTargetName(row) || "").toLowerCase();
+        
+        return desc.includes(kw) || 
+               refNo.includes(kw) || 
+               id.includes(kw) || 
+               source.includes(kw) || 
+               target.includes(kw);
+      }
+
+      return true;
+    });
+  }, [statement, keyword, startDate, endDate]);
+
+  const paginatedStatement = React.useMemo(() => {
+    return filteredStatement.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredStatement, currentPage, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredStatement.length / pageSize));
+  const generatedAt = new Date().toLocaleString("zh-CN", { hour12: false });
 
   const headers = [
     { key: "id", label: "流水编号", render: (v) => <span className="mono" style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>{v}</span> },
@@ -156,12 +191,66 @@ export function LPStatement({ user }) {
       <div style={styles.pageHeader} className="no-print">
         <div>
           <h2>我名下的资金往来对账单</h2>
-          <p style={styles.pageHint}>共 {statement.length} 条已审核流水，按发生日期倒序排列。</p>
+          <p style={styles.pageHint}>
+            {keyword || startDate || endDate 
+              ? `已筛选出 ${filteredStatement.length} 条，共 ${statement.length} 条已审核流水` 
+              : `共 ${statement.length} 条已审核流水`
+            }，按发生日期倒序排列。
+          </p>
         </div>
         <button onClick={handlePrint} className="btn-secondary" style={styles.printButton}>
           <Printer size={18} />
           <span>打印 / 导出 PDF</span>
         </button>
+      </div>
+
+      {/* 筛选过滤栏 */}
+      <div style={styles.filterBar} className="no-print glass-card">
+        <div style={styles.filterGroup}>
+          <label style={styles.filterLabel}>关键词：</label>
+          <input 
+            type="text"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="搜索备注、凭证号、流水、交易方..."
+            className="form-input"
+            style={styles.filterInput}
+          />
+        </div>
+        <div style={styles.filterGroup}>
+          <label style={styles.filterLabel}>日期范围：</label>
+          <div style={styles.dateRangeWrap}>
+            <input 
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="form-input"
+              style={styles.dateInput}
+            />
+            <span style={styles.dateSeparator}>至</span>
+            <input 
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="form-input"
+              style={styles.dateInput}
+            />
+          </div>
+        </div>
+        {(keyword || startDate || endDate) && (
+          <button 
+            type="button" 
+            onClick={() => {
+              setKeyword("");
+              setStartDate("");
+              setEndDate("");
+            }}
+            className="btn-secondary"
+            style={styles.clearBtn}
+          >
+            重置
+          </button>
+        )}
       </div>
 
       <div className="lp-statement-print">
@@ -172,7 +261,7 @@ export function LPStatement({ user }) {
           </div>
           <div className="lp-print-meta">
             <span>生成时间：{generatedAt}</span>
-            <span>记录数量：{statement.length} 条</span>
+            <span>记录数量：{filteredStatement.length} 条</span>
           </div>
         </div>
         <table>
@@ -189,7 +278,7 @@ export function LPStatement({ user }) {
             </tr>
           </thead>
           <tbody>
-            {statement.map(row => (
+            {filteredStatement.map(row => (
               <tr key={row.id}>
                 <td>{row.id}</td>
                 <td>{formatDate(row.date)}</td>
@@ -258,7 +347,7 @@ export function LPStatement({ user }) {
               <option value={50}>50 条</option>
             </select>
             <span style={{ marginLeft: "12px", color: "var(--text-secondary)" }}>
-              共 {statement.length} 条记录
+              共 {filteredStatement.length} 条记录
             </span>
           </div>
           
@@ -399,6 +488,58 @@ const styles = {
     color: "var(--text-primary)",
     fontSize: "0.85rem",
     fontWeight: "500"
+  },
+  filterBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "18px",
+    padding: "12px 14px",
+    marginBottom: "16px"
+  },
+  filterGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
+  },
+  filterLabel: {
+    fontSize: "0.85rem",
+    fontWeight: "500",
+    color: "var(--text-secondary)",
+    whiteSpace: "nowrap"
+  },
+  filterInput: {
+    width: "250px",
+    height: "36px",
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateRangeWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  },
+  dateInput: {
+    width: "140px",
+    height: "36px",
+    padding: "6px 10px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateSeparator: {
+    fontSize: "0.85rem",
+    color: "var(--text-secondary)"
+  },
+  clearBtn: {
+    padding: "0 14px",
+    height: "36px",
+    fontSize: "0.85rem",
+    marginLeft: "auto"
   }
 };
 export default LPStatement;

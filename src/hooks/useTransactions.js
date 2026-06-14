@@ -57,6 +57,10 @@ export function useTransactions() {
       sql += " AND t.investor_id = ?";
       params.push(filters.investorId);
     }
+    if (filters.status) {
+      sql += " AND t.status = ?";
+      params.push(filters.status);
+    }
 
     sql += " ORDER BY t.date DESC, t.created_at DESC";
     return await querySQL(sql, params);

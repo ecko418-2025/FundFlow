@@ -74,10 +74,19 @@ export function LPDashboard({ user }) {
   const [poolRows, setPoolRows] = useState([]);
   const [projectRows, setProjectRows] = useState([]);
   const [incomeRows, setIncomeRows] = useState([]);
-  const [activeTab, setActiveTab] = useState("income");
+  const [activeTab, setActiveTab] = useState("pools");
   const [pageByTab, setPageByTab] = useState({ income: 1, projects: 1, pools: 1 });
   const [pageSizeByTab, setPageSizeByTab] = useState({ income: 20, projects: 20, pools: 20 });
   const tableSectionRef = useRef(null);
+
+  const [keyword, setKeyword] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Reset page when search criteria change
+  useEffect(() => {
+    setPageByTab({ income: 1, projects: 1, pools: 1 });
+  }, [keyword, startDate, endDate, activeTab]);
 
   useEffect(() => {
     async function loadLPDashboard() {
@@ -281,13 +290,22 @@ export function LPDashboard({ user }) {
 
   const tableTabs = useMemo(() => [
     {
+      key: "pools",
+      label: "参与资金",
+      title: "我参与的资金汇总表",
+      headers: poolHeaders,
+      rows: poolRows,
+      loadingMessage: "资金持仓穿透核对中...",
+      emptyMessage: "暂无资金参与记录"
+    },
+    {
       key: "income",
-      label: "个人收益分配",
-      title: "我的个人收益分配汇总表",
+      label: "收益分配",
+      title: "我的收益分配汇总表",
       headers: incomeHeaders,
       rows: incomeRows,
       loadingMessage: "收益分配核对中...",
-      emptyMessage: "暂无已确认的个人收益分配记录"
+      emptyMessage: "暂无已确认的收益分配记录"
     },
     {
       key: "projects",
@@ -297,25 +315,59 @@ export function LPDashboard({ user }) {
       rows: projectRows,
       loadingMessage: "项目参与关系核对中...",
       emptyMessage: "暂无项目参与记录"
-    },
-    {
-      key: "pools",
-      label: "参与资金池",
-      title: "我参与的资金池汇总表",
-      headers: poolHeaders,
-      rows: poolRows,
-      loadingMessage: "资金池持仓穿透核对中...",
-      emptyMessage: "暂无资金池参与记录"
     }
   ], [incomeRows, projectRows, poolRows]);
 
   const activeTable = tableTabs.find(tab => tab.key === activeTab) || tableTabs[0];
   const currentPage = pageByTab[activeTable.key] || 1;
   const pageSize = pageSizeByTab[activeTable.key] || 20;
-  const totalRows = activeTable.rows.length;
+
+  // Calculate filtered rows dynamically for the active tab
+  const filteredRows = useMemo(() => {
+    let rows = [];
+    if (activeTable.key === "income") rows = incomeRows;
+    else if (activeTable.key === "projects") rows = projectRows;
+    else if (activeTable.key === "pools") rows = poolRows;
+
+    return rows.filter(row => {
+      // 1. Date Filter
+      if (activeTable.key === "income") {
+        if (startDate && row.distribution_date < startDate) return false;
+        if (endDate && row.distribution_date > endDate) return false;
+      } else if (activeTable.key === "projects") {
+        if (startDate && row.joined_at < startDate) return false;
+        if (endDate && row.joined_at > endDate) return false;
+      }
+
+      // 2. Keyword Filter
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        if (activeTable.key === "income") {
+          const stamp = (row.distribution_stamp || "").toLowerCase();
+          const pName = (row.project_name || "").toLowerCase();
+          const poolName = (row.pool_name || "").toLowerCase();
+          const desc = (row.description || "").toLowerCase();
+          const id = String(row.id || "").toLowerCase();
+          return stamp.includes(kw) || pName.includes(kw) || poolName.includes(kw) || desc.includes(kw) || id.includes(kw);
+        } else if (activeTable.key === "projects") {
+          const pName = (row.project_name || "").toLowerCase();
+          const source = (row.source_name || "").toLowerCase();
+          const status = (row.project_status || "").toLowerCase();
+          return pName.includes(kw) || source.includes(kw) || status.includes(kw);
+        } else if (activeTable.key === "pools") {
+          const pName = (row.pool_name || "").toLowerCase();
+          const status = (row.pool_status || "").toLowerCase();
+          return pName.includes(kw) || status.includes(kw);
+        }
+      }
+      return true;
+    });
+  }, [activeTable.key, incomeRows, projectRows, poolRows, keyword, startDate, endDate]);
+
+  const totalRows = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
   const displayPage = Math.min(currentPage, totalPages);
-  const paginatedRows = activeTable.rows.slice((displayPage - 1) * pageSize, displayPage * pageSize);
+  const paginatedRows = filteredRows.slice((displayPage - 1) * pageSize, displayPage * pageSize);
 
   const setActivePage = (nextPage) => {
     setPageByTab(prev => ({
@@ -348,7 +400,7 @@ export function LPDashboard({ user }) {
         <StatCard title="我的累计实缴出资" value={formatCNY(totalDirectCalled, false)} unit="元" subtext="直接打款至资金池的已审核金额" icon={Wallet} />
         <StatCard title="账面现金权益净值" value={formatCNY(totalBookValue, false)} unit="元" subtext="资金池现金余额 × 我的有效份额" icon={Layers} color="var(--accent-gold)" onClick={() => jumpToTable("pools")} />
         <StatCard title="累计个人分配收益" value={formatCNY(totalDistributions, false)} unit="元" subtext="已确认分配至本人账户的收益" icon={DollarSign} color="var(--accent-green)" onClick={() => jumpToTable("income")} />
-        <StatCard title="项目折算投资敞口" value={formatCNY(totalProjectExposure, false)} unit="元" subtext="直接项目和穿透项目的合计敞口" icon={Briefcase} color="var(--accent-blue)" onClick={() => jumpToTable("projects")} />
+        <StatCard title="项目折算投资敞口" value={formatCNY(totalProjectExposure, false)} unit="元" subtext="直接项目和穿透项目的合计敞口" icon={Briefcase} color="var(--accent-purple)" onClick={() => jumpToTable("projects")} />
       </div>
 
       <div ref={tableSectionRef} className="glass-card no-hover" style={styles.section}>
@@ -372,6 +424,65 @@ export function LPDashboard({ user }) {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* 筛选过滤栏 */}
+        <div style={styles.filterBar}>
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>关键词：</label>
+            <input 
+              type="text"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder={
+                activeTable.key === "income" 
+                  ? "搜索钢印、项目、资金池、备注..." 
+                  : activeTable.key === "projects" 
+                    ? "搜索项目、路径、状态..." 
+                    : "搜索资金池、状态..."
+              }
+              className="form-input"
+              style={styles.filterInput}
+            />
+          </div>
+          
+          {activeTable.key !== "pools" && (
+            <div style={styles.filterGroup}>
+              <label style={styles.filterLabel}>日期范围：</label>
+              <div style={styles.dateRangeWrap}>
+                <input 
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="form-input"
+                  style={styles.dateInput}
+                />
+                <span style={styles.dateSeparator}>至</span>
+                <input 
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="form-input"
+                  style={styles.dateInput}
+                />
+              </div>
+            </div>
+          )}
+
+          {(keyword || startDate || endDate) && (
+            <button 
+              type="button" 
+              onClick={() => {
+                setKeyword("");
+                setStartDate("");
+                setEndDate("");
+              }}
+              className="btn-secondary"
+              style={styles.clearBtn}
+            >
+              重置
+            </button>
+          )}
         </div>
 
         <DataTable
@@ -523,6 +634,61 @@ const styles = {
   pageIndicator: {
     color: "var(--text-secondary)",
     fontSize: "0.85rem"
+  },
+  filterBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "18px",
+    padding: "12px 14px",
+    backgroundColor: "var(--bg-primary)",
+    border: "1px solid var(--border)",
+    borderRadius: "8px",
+    marginBottom: "16px"
+  },
+  filterGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px"
+  },
+  filterLabel: {
+    fontSize: "0.85rem",
+    fontWeight: "500",
+    color: "var(--text-secondary)",
+    whiteSpace: "nowrap"
+  },
+  filterInput: {
+    width: "250px",
+    height: "36px",
+    padding: "6px 12px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateRangeWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  },
+  dateInput: {
+    width: "140px",
+    height: "36px",
+    padding: "6px 10px",
+    fontSize: "0.85rem",
+    backgroundColor: "var(--bg-secondary)",
+    borderColor: "var(--border)",
+    color: "var(--text-primary)"
+  },
+  dateSeparator: {
+    fontSize: "0.85rem",
+    color: "var(--text-secondary)"
+  },
+  clearBtn: {
+    padding: "0 14px",
+    height: "36px",
+    fontSize: "0.85rem",
+    marginLeft: "auto"
   }
 };
 

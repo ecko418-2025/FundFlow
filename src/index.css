@@ -216,6 +216,152 @@ body {
   border-color: var(--glass-border);
 }
 
+/* ==========================================================================
+   统计指标卡片 (StatCard) 核心样式与过渡动画
+   ========================================================================== */
+.stat-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 20px;
+  flex: 1;
+  min-width: 220px;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+              box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+              background-color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+              border-color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* 鼠标悬浮：向上平滑悬浮 6px 并轻微放大 */
+.stat-card:hover {
+  transform: translateY(-6px) scale(1.01);
+}
+
+/* Solarized Light 象牙白米色主题下的四种淡色区分 */
+.theme-solarized-light .stat-card-blue {
+  background-color: rgba(38, 139, 210, 0.05) !important;
+  border-color: rgba(38, 139, 210, 0.12) !important;
+}
+.theme-solarized-light .stat-card-blue:hover {
+  background-color: rgba(38, 139, 210, 0.09) !important;
+  border-color: rgba(38, 139, 210, 0.35) !important;
+  box-shadow: 0 12px 24px rgba(38, 139, 210, 0.12), var(--shadow-lg) !important;
+}
+
+.theme-solarized-light .stat-card-gold {
+  background-color: rgba(181, 137, 0, 0.05) !important;
+  border-color: rgba(181, 137, 0, 0.12) !important;
+}
+.theme-solarized-light .stat-card-gold:hover {
+  background-color: rgba(181, 137, 0, 0.09) !important;
+  border-color: rgba(181, 137, 0, 0.35) !important;
+  box-shadow: 0 12px 24px rgba(181, 137, 0, 0.12), var(--shadow-lg) !important;
+}
+
+.theme-solarized-light .stat-card-green {
+  background-color: rgba(133, 153, 0, 0.05) !important;
+  border-color: rgba(133, 153, 0, 0.12) !important;
+}
+.theme-solarized-light .stat-card-green:hover {
+  background-color: rgba(133, 153, 0, 0.09) !important;
+  border-color: rgba(133, 153, 0, 0.35) !important;
+  box-shadow: 0 12px 24px rgba(133, 153, 0, 0.12), var(--shadow-lg) !important;
+}
+
+.theme-solarized-light .stat-card-red {
+  background-color: rgba(220, 50, 47, 0.05) !important;
+  border-color: rgba(220, 50, 47, 0.12) !important;
+}
+.theme-solarized-light .stat-card-red:hover {
+  background-color: rgba(220, 50, 47, 0.09) !important;
+  border-color: rgba(220, 50, 47, 0.35) !important;
+  box-shadow: 0 12px 24px rgba(220, 50, 47, 0.12), var(--shadow-lg) !important;
+}
+
+.theme-solarized-light .stat-card-purple {
+  background-color: rgba(108, 113, 196, 0.05) !important;
+  border-color: rgba(108, 113, 196, 0.12) !important;
+}
+.theme-solarized-light .stat-card-purple:hover {
+  background-color: rgba(108, 113, 196, 0.09) !important;
+  border-color: rgba(108, 113, 196, 0.35) !important;
+  box-shadow: 0 12px 24px rgba(108, 113, 196, 0.12), var(--shadow-lg) !important;
+}
+
+.theme-solarized-light .stat-card-gray {
+  background-color: rgba(147, 161, 161, 0.05) !important;
+  border-color: rgba(147, 161, 161, 0.12) !important;
+}
+.theme-solarized-light .stat-card-gray:hover {
+  background-color: rgba(147, 161, 161, 0.09) !important;
+  border-color: rgba(147, 161, 161, 0.35) !important;
+  box-shadow: 0 12px 24px rgba(147, 161, 161, 0.12), var(--shadow-lg) !important;
+}
+
+/* 默认暗色主题（Not Solarized Light）适配 */
+:root:not(.theme-solarized-light) .stat-card-blue {
+  background-color: rgba(37, 99, 235, 0.04) !important;
+  border-color: rgba(37, 99, 235, 0.12) !important;
+}
+:root:not(.theme-solarized-light) .stat-card-blue:hover {
+  background-color: rgba(37, 99, 235, 0.08) !important;
+  border-color: rgba(37, 99, 235, 0.3) !important;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.15) !important;
+}
+
+:root:not(.theme-solarized-light) .stat-card-gold {
+  background-color: rgba(245, 158, 11, 0.04) !important;
+  border-color: rgba(245, 158, 11, 0.12) !important;
+}
+:root:not(.theme-solarized-light) .stat-card-gold:hover {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  box-shadow: 0 12px 24px rgba(245, 158, 11, 0.15) !important;
+}
+
+:root:not(.theme-solarized-light) .stat-card-green {
+  background-color: rgba(16, 185, 129, 0.04) !important;
+  border-color: rgba(16, 185, 129, 0.12) !important;
+}
+:root:not(.theme-solarized-light) .stat-card-green:hover {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  box-shadow: 0 12px 24px rgba(16, 185, 129, 0.15) !important;
+}
+
+:root:not(.theme-solarized-light) .stat-card-red {
+  background-color: rgba(239, 68, 68, 0.04) !important;
+  border-color: rgba(239, 68, 68, 0.12) !important;
+}
+:root:not(.theme-solarized-light) .stat-card-red:hover {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  box-shadow: 0 12px 24px rgba(239, 68, 68, 0.15) !important;
+}
+
+:root:not(.theme-solarized-light) .stat-card-purple {
+  background-color: rgba(139, 92, 246, 0.04) !important;
+  border-color: rgba(139, 92, 246, 0.12) !important;
+}
+:root:not(.theme-solarized-light) .stat-card-purple:hover {
+  background-color: rgba(139, 92, 246, 0.08) !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+  box-shadow: 0 12px 24px rgba(139, 92, 246, 0.15) !important;
+}
+
+:root:not(.theme-solarized-light) .stat-card-gray {
+  background-color: rgba(156, 163, 175, 0.04) !important;
+  border-color: rgba(156, 163, 175, 0.12) !important;
+}
+:root:not(.theme-solarized-light) .stat-card-gray:hover {
+  background-color: rgba(156, 163, 175, 0.08) !important;
+  border-color: rgba(156, 163, 175, 0.3) !important;
+  box-shadow: 0 12px 24px rgba(156, 163, 175, 0.15) !important;
+}
+
 /* 按钮微动效 */
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-blue) 0%, #1D4ED8 100%);
@@ -354,14 +500,21 @@ body {
   background: var(--bg-primary);
 }
 
-/* 日期选择按钮（日历图标）改为白色，提升可见性 */
+/* 日期选择按钮（日历图标）在不同主题下的颜色适配，确保淡色背景下清晰可见 */
 .form-input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
-
-/* Firefox support (may require -moz- prefix) */
 .form-input[type="date"]::-moz-calendar-picker-indicator {
   filter: invert(1);
+}
+
+.theme-solarized-light .form-input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.3) !important;
+  cursor: pointer;
+}
+.theme-solarized-light .form-input[type="date"]::-moz-calendar-picker-indicator {
+  filter: invert(0.3) !important;
+  cursor: pointer;
 }
 
 .form-input:focus {

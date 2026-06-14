@@ -205,7 +205,7 @@ export function Dashboard() {
           unit="个"
           subtext="左：各级资金池 / 右：存续管理项目"
           icon={Layers}
-          color="var(--text-secondary)"
+          color="var(--accent-purple)"
         />
       </div>
 

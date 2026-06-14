@@ -2,8 +2,25 @@ import React from "react";
 
 export function StatCard({ title, value, unit = "", subtext = "", trend = null, icon: Icon = null, color = "var(--accent-blue)", onClick = null }) {
   const clickable = typeof onClick === "function";
+
+  // Helper to resolve clean style key matching accent colors
+  const getColorKey = (c) => {
+    if (!c) return "blue";
+    const str = c.toLowerCase();
+    if (str.includes("blue")) return "blue";
+    if (str.includes("gold")) return "gold";
+    if (str.includes("green")) return "green";
+    if (str.includes("red")) return "red";
+    if (str.includes("purple")) return "purple";
+    if (str.includes("secondary") || str.includes("gray")) return "gray";
+    return "blue";
+  };
+
+  const colorKey = getColorKey(color);
+
   return (
     <div
+      className={`stat-card stat-card-${colorKey}`}
       style={{
         ...styles.card,
         ...(clickable ? styles.cardClickable : {})
@@ -50,15 +67,10 @@ export function StatCard({ title, value, unit = "", subtext = "", trend = null, 
 
 const styles = {
   card: {
-    background: "var(--glass-bg)",
-    backdropFilter: "blur(16px)",
-    border: "1px solid var(--glass-border)",
     borderRadius: "12px",
     padding: "20px",
     flex: 1,
-    minWidth: "220px",
-    boxShadow: "var(--shadow-lg)",
-    transition: "all 0.2s ease"
+    minWidth: "220px"
   },
   cardClickable: {
     cursor: "pointer",
