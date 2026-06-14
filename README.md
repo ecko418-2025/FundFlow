@@ -72,6 +72,12 @@ http://127.0.0.1:5173/fund/
 npm run build
 ```
 
+一键部署至 CloudBase：
+
+```bash
+npm run deploy
+```
+
 CloudBase 静态网站部署路径：
 
 ```text
